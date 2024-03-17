@@ -55,7 +55,7 @@ happening, all ports should restrict window widths to be multiples of 16 pixels.
 #ifdef CD32
 #include "cd32_fmv.h"
 #endif
-#include "specialmonitors.h"
+//#include "specialmonitors.h"
 #include "devices.h"
 #include "gfxboard.h"
 
@@ -71,6 +71,16 @@ typedef enum
 	CMODE_EXTRAHB_ECS_KILLEHB,
 	CMODE_HAM
 } CMODE_T;
+
+#ifdef AMIBERRY
+#define RENDER_SIGNAL_PARTIAL 1
+#define RENDER_SIGNAL_FRAME_DONE 2
+#define RENDER_SIGNAL_QUIT 3
+static uae_thread_id drawing_tid = nullptr;
+static smp_comm_pipe *volatile drawing_pipe = nullptr;
+static uae_sem_t drawing_sem = nullptr;
+static bool volatile drawing_thread_busy = false;
+#endif
 
 extern int sprite_buffer_res;
 static int lores_factor;
@@ -245,6 +255,9 @@ typedef void (*line_draw_func)(int, int, int);
 
 #define LINESTATE_SIZE ((MAXVPOS + MAXVPOS_WRAPLINES) * 2 + 1)
 
+#ifdef AMIBERRY
+static int linestate_first_undecided = 0;
+#endif
 static uae_u8 linestate[LINESTATE_SIZE];
 
 uae_u8 line_data[(MAXVPOS + MAXVPOS_WRAPLINES) * 2][MAX_PLANES * MAX_WORDS_PER_LINE * 2];
@@ -402,12 +415,23 @@ int coord_native_to_amiga_x (int x)
 	return x + 2 * DISPLAY_LEFT_SHIFT - 2 * DIW_DDF_OFFSET;
 }
 
+#ifdef AMIBERRY
 int coord_native_to_amiga_y (int y)
+{
+	if (!native2amiga_line_map || y < 0)
+		return -1;
+	if (y >= native2amiga_line_map_height) 
+		return native2amiga_line_map[native2amiga_line_map_height] + thisframe_y_adjust - minfirstline;
+	return native2amiga_line_map[y] + thisframe_y_adjust - minfirstline;
+}
+#else
+int coord_native_to_amiga_y(int y)
 {
 	if (!native2amiga_line_map || y < 0 || y >= native2amiga_line_map_height)
 		return -1;
 	return native2amiga_line_map[y] + thisframe_y_adjust - minfirstline;
 }
+#endif
 
 STATIC_INLINE int res_shift_from_window (int x)
 {
@@ -787,10 +811,10 @@ void set_custom_limits (int w, int h, int dx, int dy, bool blank)
 		dy = 0;
 	}
 
-	if (specialmonitor_uses_control_lines() || !blank) {
-		w = -1;
-		h = -1;
-	}
+	//if (specialmonitor_uses_control_lines()) {
+	//	w = -1;
+	//	h = -1;
+	//}
 
 	if (w <= 0 || dx < 0) {
 		visible_left_start = 0;
@@ -4181,8 +4205,9 @@ static void center_image (void)
 	if (max_drawn_amiga_line_tmp > vidinfo->drawbuffer.inheight)
 		max_drawn_amiga_line_tmp = vidinfo->drawbuffer.inheight;
 	max_drawn_amiga_line_tmp >>= linedbl;
-	
+
 	thisframe_y_adjust = minfirstline;
+
 	if (currprefs.gfx_ycenter && !fd->gfx_filter_autoscale) {
 
 		if (thisframe_first_drawn_line >= 0 && thisframe_last_drawn_line > thisframe_first_drawn_line) {
@@ -4392,6 +4417,10 @@ static void init_drawing_frame (void)
 
 	init_hardware_for_drawing_frame ();
 
+#ifdef AMIBERRY
+	linestate_first_undecided = 0;
+#endif
+
 	if (thisframe_first_drawn_line < 0)
 		thisframe_first_drawn_line = minfirstline;
 	if (thisframe_first_drawn_line > thisframe_last_drawn_line)
@@ -4494,7 +4523,9 @@ static void draw_debug_status_line(int monid, int line)
 	if (xlinebuffer == 0)
 		xlinebuffer = row_map[line];
 	xlinebuffer_genlock = row_map_genlock[line];
+#ifdef DEBUGGER
 	debug_draw(xlinebuffer, vidinfo->drawbuffer.pixbytes, line, vidinfo->drawbuffer.outwidth, vidinfo->drawbuffer.outheight, xredcolors, xgreencolors, xbluecolors);
+#endif
 }
 
 #define LIGHTPEN_HEIGHT 12
@@ -4540,32 +4571,19 @@ static void draw_lightpen_cursor(int monid, int x, int y, int line, int onscreen
 static void lightpen_update(struct vidbuffer *vb, int lpnum)
 {
 	struct vidbuf_description *vidinfo = &adisplays[vb->monitor_id].gfxvidinfo;
-	if (lightpen_x[lpnum] < 0 && lightpen_y[lpnum] < 0)
+	if (lightpen_x[lpnum] < 0 || lightpen_y[lpnum] < 0)
 		return;
 
-	bool out = false;
-	int extra = 2;
-
-	if (lightpen_x[lpnum] < -extra)
-		lightpen_x[lpnum] = -extra;
-	if (lightpen_x[lpnum] >= vidinfo->drawbuffer.inwidth + extra)
-		lightpen_x[lpnum] = vidinfo->drawbuffer.inwidth + extra;
-	if (lightpen_y[lpnum] < -extra)
-		lightpen_y[lpnum] = -extra;
-	if (lightpen_y[lpnum] >= vidinfo->drawbuffer.inheight + extra)
-		lightpen_y[lpnum] = vidinfo->drawbuffer.inheight + extra;
-	if (lightpen_y[lpnum] >= max_ypos_thisframe1)
-		lightpen_y[lpnum] = max_ypos_thisframe1;
-
-	if (lightpen_x[lpnum] < 0 || lightpen_y[lpnum] < 0) {
-		out = true;
-	}
-	if (lightpen_x[lpnum] >= vidinfo->drawbuffer.inwidth) {
-		out = true;
-	}
-	if (lightpen_y[lpnum] >= max_ypos_thisframe1) {
-		out = true;
-	}
+	if (lightpen_x[lpnum] < LIGHTPEN_WIDTH + 1)
+		lightpen_x[lpnum] = LIGHTPEN_WIDTH + 1;
+	if (lightpen_x[lpnum] >= vidinfo->drawbuffer.inwidth - LIGHTPEN_WIDTH - 1)
+		lightpen_x[lpnum] = vidinfo->drawbuffer.inwidth - LIGHTPEN_WIDTH - 2;
+	if (lightpen_y[lpnum] < LIGHTPEN_HEIGHT + 1)
+		lightpen_y[lpnum] = LIGHTPEN_HEIGHT + 1;
+	if (lightpen_y[lpnum] >= vidinfo->drawbuffer.inheight - LIGHTPEN_HEIGHT - 1)
+		lightpen_y[lpnum] = vidinfo->drawbuffer.inheight - LIGHTPEN_HEIGHT - 2;
+	if (lightpen_y[lpnum] >= max_ypos_thisframe1 - LIGHTPEN_HEIGHT - 1)
+		lightpen_y[lpnum] = max_ypos_thisframe1 - LIGHTPEN_HEIGHT - 2;
 
 	int cx = (((lightpen_x[lpnum] + visible_left_border) >> lores_shift) >> 1) + 29;
 
@@ -4576,17 +4594,14 @@ static void lightpen_update(struct vidbuffer *vb, int lpnum)
 	cx += currprefs.lightpen_offset[0];
 	cy += currprefs.lightpen_offset[1];
 
-	if (cx <= 0x18 - 1) {
-		cx = 0x18 - 1;
-		out = true;
+	if (cx < 0x18) {
+		cx = 0x18;
 	}
-	if (cy <= minfirstline - 1) {
-		cy = minfirstline - 1;
-		out = true;
+	if (cy < minfirstline) {
+		cy = minfirstline;
 	}
 	if (cy >= maxvpos) {
-		cy = maxvpos;
-		out = true;
+		cy = maxvpos - 1;
 	}
 
 	if (currprefs.lightpen_crosshair && lightpen_active) {
@@ -4603,8 +4618,8 @@ static void lightpen_update(struct vidbuffer *vb, int lpnum)
 	lightpen_y1[lpnum] = lightpen_y[lpnum] - LIGHTPEN_HEIGHT / 2 - 1 + thisframe_y_adjust;
 	lightpen_y2[lpnum] = lightpen_y1[lpnum] + LIGHTPEN_HEIGHT + 1 + thisframe_y_adjust;
 
-	lightpen_cx[lpnum] = out ? -1 : cx;
-	lightpen_cy[lpnum] = out ? -1 : cy;
+	lightpen_cx[lpnum] = cx;
+	lightpen_cy[lpnum] = cy;
 }
 
 static void refresh_indicator_init(void)
@@ -4687,7 +4702,11 @@ static void draw_frame2(struct vidbuffer *vbin, struct vidbuffer *vbout)
 		int whereline = amiga2aspect_line_map[i1];
 		int wherenext = amiga2aspect_line_map[i1 + 1];
 
+#ifdef AMIBERRY
+		if (whereline >= vbin->inheight || line >= linestate_first_undecided)
+#else
 		if (whereline >= vbin->inheight)
+#endif
 			break;
 		if (whereline < 0) {
 			lastline = line;
@@ -4728,12 +4747,14 @@ static void draw_frame2(struct vidbuffer *vbin, struct vidbuffer *vbout)
 
 static void draw_frame_extras(struct vidbuffer *vb, int y_start, int y_end)
 {
+#ifdef DEBUGGER
 	if (debug_dma > 1 || debug_heatmap > 1) {
 		for (int i = 0; i < vb->outheight; i++) {
 			int line = i;
 			draw_debug_status_line(vb->monitor_id, line);
 		}
 	}
+#endif
 
 	if (lightpen_active) {
 		if (lightpen_active & 1) {
@@ -4747,7 +4768,7 @@ static void draw_frame_extras(struct vidbuffer *vb, int y_start, int y_end)
 		refresh_indicator_update(vb);
 }
 
-extern bool beamracer_debug;
+//extern bool beamracer_debug;
 
 void draw_lines(int end, int section)
 {
@@ -4792,7 +4813,11 @@ void draw_lines(int end, int section)
 		int whereline = amiga2aspect_line_map[i1];
 		int wherenext = amiga2aspect_line_map[i1 + 1];
 
+#ifdef AMIBERRY
+		if (whereline >= vb->inheight || line >= linestate_first_undecided) {
+#else
 		if (whereline >= vb->inheight) {
+#endif
 			y_end = vb->inheight - 1;
 			break;
 		}
@@ -4819,7 +4844,7 @@ void draw_lines(int end, int section)
 		hposblank = 0;
 		pfield_draw_line(vb, line, whereline, wherenext);
 
-#if 1
+#if 0
 		if (beamracer_debug) {
 			if (vb->last_drawn_line == end - 4) {
 				section_color_cnt = 4;
@@ -4849,7 +4874,7 @@ bool draw_frame (struct vidbuffer *vb)
 {
 	struct vidbuf_description *vidinfo = &adisplays[vb->monitor_id].gfxvidinfo;
 	uae_u8 oldstate[LINESTATE_SIZE];
-	struct vidbuffer oldvb;
+	struct vidbuffer oldvb{};
 
 	memcpy (&oldvb, &vidinfo->drawbuffer, sizeof (struct vidbuffer));
 	memcpy (&vidinfo->drawbuffer, vb, sizeof (struct vidbuffer));
@@ -4932,6 +4957,7 @@ static void finish_drawing_frame(bool drawlines)
 
 	draw_frame_extras(vb, -1, -1);
 
+#ifndef AMIBERRY
 	// video port adapters
 	if (currprefs.monitoremu) {
 		struct vidbuf_description *outvi = &adisplays[currprefs.monitoremu_mon].gfxvidinfo;
@@ -4994,7 +5020,8 @@ static void finish_drawing_frame(bool drawlines)
 			setnativeposition(vb);
 		vidinfo->drawbuffer.tempbufferinuse = true;
 	}
-
+#endif
+		
 #ifdef CD32
 	// cd32 fmv
 	if (!currprefs.monitoremu && vidinfo->tempbuffer.bufmem_allocated && currprefs.cs_cd32fmv) {
@@ -5010,17 +5037,21 @@ static void finish_drawing_frame(bool drawlines)
 #endif
 
 	// grayscale
-	if (!currprefs.monitoremu && vidinfo->tempbuffer.bufmem_allocated &&
-		((!currprefs.genlock && (!bplcolorburst_field && currprefs.cs_color_burst)) || currprefs.gfx_grayscale)) {
-		setspecialmonitorpos(&vidinfo->tempbuffer);
-		emulate_grayscale(vb, &vidinfo->tempbuffer);
-		vb = vidinfo->outbuffer = &vidinfo->tempbuffer;
-		if (vb->nativepositioning)
-			setnativeposition(vb);
-		vidinfo->drawbuffer.tempbufferinuse = true;
-	}
+	//if (!currprefs.monitoremu && vidinfo->tempbuffer.bufmem_allocated &&
+	//	((!currprefs.genlock && (!bplcolorburst_field && currprefs.cs_color_burst)) || currprefs.gfx_grayscale)) {
+	//	setspecialmonitorpos(&vidinfo->tempbuffer);
+	//	emulate_grayscale(vb, &vidinfo->tempbuffer);
+	//	vb = vidinfo->outbuffer = &vidinfo->tempbuffer;
+	//	if (vb->nativepositioning)
+	//		setnativeposition(vb);
+	//	vidinfo->drawbuffer.tempbufferinuse = true;
+	//}
 
 	unlockscr(vb, display_reset ? -2 : -1, -1);
+#ifdef AMIBERRY
+	if (currprefs.gfx_auto_crop)
+		auto_crop_image();
+#endif
 }
 
 void check_prefs_picasso(void)
@@ -5100,7 +5131,7 @@ void full_redraw_all(void)
 		}
 	}
 	if (ad->picasso_on) {
-		gfxboard_refresh(monid);
+		picasso_refresh(monid);
 		redraw = true;
 	}
 	if (redraw) {
@@ -5133,6 +5164,16 @@ bool vsync_handle_check (void)
 	return changed != 0;
 }
 
+#ifdef AMIBERRY
+void quit_drawing_thread()
+{
+	while (drawing_thread_busy)
+		sleep_micros(1);
+	if (drawing_pipe)
+		write_comm_pipe_u32(drawing_pipe, RENDER_SIGNAL_QUIT, 1);
+}
+#endif
+
 void vsync_handle_redraw(int long_field, int lof_changed, uae_u16 bplcon0p, uae_u16 bplcon3p, bool drawlines, bool initial)
 {
 	int monid = 0;
@@ -5143,7 +5184,24 @@ void vsync_handle_redraw(int long_field, int lof_changed, uae_u16 bplcon0p, uae_
 
 		if (!initial) {
 			if (ad->framecnt == 0) {
+#ifdef AMIBERRY
+				if (currprefs.multithreaded_drawing)
+				{
+					if (drawing_tid)
+					{
+						while (drawing_thread_busy)
+							sleep_micros(10);
+						write_comm_pipe_u32(drawing_pipe, RENDER_SIGNAL_FRAME_DONE, 1);
+						uae_sem_wait(&drawing_sem);
+					}
+				}
+				else
+				{
+					finish_drawing_frame(drawlines);
+				}
+#else
 				finish_drawing_frame(drawlines);
+#endif
 #ifdef AVIOUTPUT
 				if (!ad->picasso_on) {
 					frame_drawn(monid);
@@ -5164,6 +5222,15 @@ void vsync_handle_redraw(int long_field, int lof_changed, uae_u16 bplcon0p, uae_
 #endif
 
 		if (quit_program < 0) {
+#ifdef AMIBERRY
+			if (currprefs.multithreaded_drawing)
+			{
+				if (drawing_tid)
+				{
+					quit_drawing_thread();
+				}
+			}
+#endif
 #ifdef SAVESTATE
 			if (!savestate_state && quit_program == -UAE_QUIT && currprefs.quitstatefile[0]) {
 				savestate_initsave(currprefs.quitstatefile, 1, 1, true);
@@ -5272,6 +5339,20 @@ void hsync_record_line_state(int lineno, enum nln_how how, int changed)
 		}
 		break;
 	}
+#ifdef AMIBERRY
+	linestate_first_undecided = lineno + 1;
+	if (currprefs.multithreaded_drawing)
+	{
+		if (drawing_tid && linestate_first_undecided > 3 && !drawing_thread_busy) {
+			if (currprefs.gfx_vresolution) {
+				if (!(linestate_first_undecided & 0x3e))
+					write_comm_pipe_u32(drawing_pipe, RENDER_SIGNAL_PARTIAL, 1);
+			}
+			else if (!(linestate_first_undecided & 0x1f))
+				write_comm_pipe_u32(drawing_pipe, RENDER_SIGNAL_PARTIAL, 1);
+		}
+	}
+#endif
 }
 
 static void dummy_flush_line(struct vidbuf_description *gfxinfo, struct vidbuffer *vb, int line_no)
@@ -5417,6 +5498,10 @@ void reset_drawing(void)
 
 	lores_reset ();
 
+#ifdef AMIBERRY
+	linestate_first_undecided = 0;
+#endif
+
 	reset_decision_table();
 
 	init_aspect_maps ();
@@ -5465,6 +5550,60 @@ static void gen_direct_drawing_table(void)
 #endif
 }
 
+#ifdef AMIBERRY
+static int drawing_thread(void *unused)
+{
+	for (;;) {
+		drawing_thread_busy = false;
+		const auto signal = read_comm_pipe_u32_blocking(drawing_pipe);
+		drawing_thread_busy = true;
+		switch (signal) {
+
+			case RENDER_SIGNAL_PARTIAL:
+				draw_lines(0, 0);
+				break;
+
+			case RENDER_SIGNAL_FRAME_DONE:
+				finish_drawing_frame(true);
+				uae_sem_post(&drawing_sem);
+				break;
+
+			case RENDER_SIGNAL_QUIT:
+				drawing_tid = nullptr;
+				if (drawing_pipe)
+				{
+					destroy_comm_pipe(drawing_pipe);
+					xfree(drawing_pipe);
+					drawing_pipe = nullptr;
+				}
+				if (drawing_sem)
+				{
+					uae_sem_destroy(&drawing_sem);
+					drawing_sem = nullptr;
+				}
+				drawing_thread_busy = false;
+				return 0;
+			default:
+				break;
+		}
+	}
+}
+
+void start_drawing_thread()
+{
+	if (drawing_pipe == nullptr) {
+		drawing_pipe = xmalloc(smp_comm_pipe, 1);
+		init_comm_pipe(drawing_pipe, 20, 1);
+	}
+	if (drawing_sem == nullptr) {
+		uae_sem_init(&drawing_sem, 0, 0);
+	}
+	if (drawing_tid == nullptr && drawing_pipe != nullptr && drawing_sem != nullptr) {
+		uae_start_thread(_T("drawing"), drawing_thread, nullptr, &drawing_tid);
+	}
+}
+#endif
+
 void drawing_init (void)
 {
 	int monid = 0;
@@ -5478,6 +5617,13 @@ void drawing_init (void)
 	gen_direct_drawing_table();
 
 	uae_sem_init (&gui_sem, 0, 1);
+#ifdef AMIBERRY
+	if (currprefs.multithreaded_drawing)
+	{
+		start_drawing_thread();
+	}
+#endif
+
 #ifdef PICASSO96
 	if (!isrestore ()) {
 		ad->picasso_on = 0;

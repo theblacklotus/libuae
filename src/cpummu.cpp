@@ -151,11 +151,11 @@ void mmu_tt_modified (void)
 #define LEVELB(a, x) (get_long((((uae_u32)a) & ~((1 << (LEVELB_SIZE + 2)) - 1)) + LEVELB_VAL(x) * 4))
 #define LEVELC(b, x) (get_long((((uae_u32)b) & ~((1 << (LEVELC_SIZE + 2)) - 1)) + LEVELC_VAL(x) * 4))
 
-#define ISINVALID(x) ((((ULONG)x) & 3) == 0)
+#define ISINVALID(x) ((((unsigned long)x) & 3) == 0)
 
 static uae_u32 getdesc(uae_u32 root, uae_u32 addr)
 {
-	ULONG desc;
+	unsigned long desc;
 
 	desc = LEVELA(root, addr);
 	if (ISINVALID(desc))
@@ -168,13 +168,13 @@ static uae_u32 getdesc(uae_u32 root, uae_u32 addr)
 }
 static void mmu_dump_table(const char * label, uaecptr root_ptr)
 {
-	ULONG i;
-	ULONG startaddr;
-	ULONG odesc;
-	ULONG totalpages;
-	ULONG page_size = mmu_pagesize_8k ? PAGE_SIZE_8k : PAGE_SIZE_4k;
-	ULONG pagemask = (1 << page_size) - 1;
-	ULONG descmask = pagemask & ~(0x08 | 0x10); // mask out unused and M bits
+	unsigned long i;
+	unsigned long startaddr;
+	unsigned long odesc;
+	unsigned long totalpages;
+	unsigned long page_size = mmu_pagesize_8k ? PAGE_SIZE_8k : PAGE_SIZE_4k;
+	unsigned long pagemask = (1 << page_size) - 1;
+	unsigned long descmask = pagemask & ~(0x08 | 0x10); // mask out unused and M bits
 
 	root_ptr &= 0xfffffe00;
 	console_out_f(_T("MMU dump start. Root = %08x. Page = %d\n"), root_ptr, 1 << page_size);
@@ -182,8 +182,8 @@ static void mmu_dump_table(const char * label, uaecptr root_ptr)
 	startaddr = 0;
 	odesc = getdesc(root_ptr, startaddr);
 	for (i = 0; i <= totalpages; i++) {
-		ULONG addr = i << page_size;
-		ULONG desc = 0;
+		unsigned long addr = i << page_size;
+		unsigned long desc = 0;
 		if (i < totalpages)
 			desc = getdesc(root_ptr, addr);
 		if ((desc & descmask) != (odesc & descmask) || i == totalpages) {
@@ -656,8 +656,8 @@ static uae_u32 mmu_fill_atc(uaecptr addr, bool super, uae_u32 tag, bool write, s
     uae_u32 status = 0;
     int i;
 	int old_s;
-    
-    // Use supervisor mode to access descriptors (really is fc = 7)
+
+	// Use supervisor mode to access descriptors (really is fc = 7)
     old_s = regs.s;
     regs.s = 1;
 

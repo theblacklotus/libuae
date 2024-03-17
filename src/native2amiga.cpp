@@ -22,7 +22,7 @@
 #include "native2amiga.h"
 
 smp_comm_pipe native2amiga_pending;
-static uae_sem_t n2asem;
+static uae_sem_t n2asem = 0;
 
 /*
 * to be called when setting up the hardware
@@ -107,7 +107,7 @@ void uae_Signal_with_Func(uaecptr task, uae_u32 mask, UAE_PROCESSED state)
 {
 	uae_nativesem_wait();
 	write_comm_pipe_int(&native2amiga_pending, 0 | 0x80, 0);
-	write_comm_pipe_pvoid(&native2amiga_pending, state, 0);
+	write_comm_pipe_pvoid(&native2amiga_pending, (void *) state, 0);
 	write_comm_pipe_u32(&native2amiga_pending, task, 0);
 	write_comm_pipe_int(&native2amiga_pending, mask, 1);
 	do_uae_int_requested();

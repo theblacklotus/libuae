@@ -12,19 +12,29 @@
 #include "custom.h"
 #include "sampler.h"
 
-#include "render.h"
-
-#include <dsound.h>
+#include <sounddep/sound.h>
 
 #include <math.h>
 
-#include "win32.h"
+//#include "win32.h"
 
 #define SAMPLESIZE 4
 
-static LPDIRECTSOUNDCAPTURE lpDS2r = NULL;
-static LPDIRECTSOUNDCAPTUREBUFFER lpDSBprimary2r = NULL;
-static LPDIRECTSOUNDCAPTUREBUFFER lpDSB2r = NULL;
+//static LPDIRECTSOUNDCAPTURE lpDS2r = NULL;
+static SDL_AudioDeviceID dev_rec;
+SDL_AudioSpec rec_want, rec_have;
+//static LPDIRECTSOUNDCAPTUREBUFFER lpDSBprimary2r = NULL;
+//static LPDIRECTSOUNDCAPTUREBUFFER lpDSB2r = NULL;
+static Uint8* recording_buffer = nullptr;
+static Uint32 buffer_byte_size = 0;
+static Uint32 buffer_byte_pos = 0;
+static Uint32 buffer_byte_max_pos = 0;
+
+void audioRecordingCallback(void* userdata, Uint8* stream, int len);
+
+//Number of available devices
+int recording_device_count = 0;
+
 static int inited;
 static uae_u8 *samplebuffer;
 static int sampleframes;
@@ -36,24 +46,24 @@ float sampler_evtime;
 
 static int capture_init (void)
 {
-	HRESULT hr;
-	DSCBUFFERDESC sound_buffer_rec;
-	WAVEFORMATEX wavfmt;
-	TCHAR *name;
+	//HRESULT hr;
+	//DSCBUFFERDESC sound_buffer_rec;
+	//WAVEFORMATEX wavfmt;
+	TCHAR *name = nullptr;
 	int samplerate = 44100;
 
 	if (currprefs.sampler_freq)
 		samplerate = currprefs.sampler_freq;
 
-	name = record_devices[currprefs.win32_samplersoundcard]->name;
+	name = record_devices[currprefs.samplersoundcard]->name;
 
-	wavfmt.wFormatTag = WAVE_FORMAT_PCM;
-	wavfmt.nChannels = 2;
-	wavfmt.nSamplesPerSec = samplerate;
-	wavfmt.wBitsPerSample = 16;
-	wavfmt.nBlockAlign = wavfmt.wBitsPerSample / 8 * wavfmt.nChannels;
-	wavfmt.nAvgBytesPerSec = wavfmt.nBlockAlign * wavfmt.nSamplesPerSec;
-	wavfmt.cbSize = 0;
+	//wavfmt.wFormatTag = WAVE_FORMAT_PCM;
+	//wavfmt.nChannels = 2;
+	//wavfmt.nSamplesPerSec = samplerate;
+	//wavfmt.wBitsPerSample = 16;
+	//wavfmt.nBlockAlign = wavfmt.wBitsPerSample / 8 * wavfmt.nChannels;
+	//wavfmt.nAvgBytesPerSec = wavfmt.nBlockAlign * wavfmt.nSamplesPerSec;
+	//wavfmt.cbSize = 0;
 
 	clockspersample = sampler_evtime / samplerate;
 	sampleframes = (samplerate + 49) / 50;
@@ -61,28 +71,52 @@ static int capture_init (void)
 	if (currprefs.sampler_buffer)
 		recordbufferframes = currprefs.sampler_buffer;
 
-	hr = DirectSoundCaptureCreate (&record_devices[currprefs.win32_samplersoundcard]->guid, &lpDS2r, NULL);
-	if (FAILED (hr)) {
-		write_log (_T("SAMPLER: DirectSoundCaptureCreate('%s') failure: %s\n"), name, DXError (hr));
-		return 0;
-	}
-	memset (&sound_buffer_rec, 0, sizeof (DSCBUFFERDESC));
-	sound_buffer_rec.dwSize = sizeof (DSCBUFFERDESC);
-	sound_buffer_rec.dwBufferBytes = recordbufferframes * SAMPLESIZE;
-	sound_buffer_rec.lpwfxFormat = &wavfmt;
-	sound_buffer_rec.dwFlags = 0 ;
+	//hr = DirectSoundCaptureCreate (&record_devices[currprefs.win32_samplersoundcard]->guid, &lpDS2r, NULL);
+	//if (FAILED (hr)) {
+	//	write_log (_T("SAMPLER: DirectSoundCaptureCreate('%s') failure: %s\n"), name, DXError (hr));
+	//	return 0;
+	//}
 
-	hr = lpDS2r->CreateCaptureBuffer (&sound_buffer_rec, &lpDSB2r, NULL);
-	if (FAILED (hr)) {
-		write_log (_T("SAMPLER: CreateCaptureSoundBuffer('%s') failure: %s\n"), name, DXError(hr));
+	SDL_zero(rec_want);
+	rec_want.freq = 44100;
+	rec_want.format = AUDIO_S16SYS;
+	rec_want.channels = 2;
+	rec_want.samples = sampleframes;
+	rec_want.callback = audioRecordingCallback;
+
+	//Open recording device
+	dev_rec = SDL_OpenAudioDevice(SDL_GetAudioDeviceName(record_devices[currprefs.samplersoundcard]->id, SDL_TRUE), SDL_TRUE, &rec_want, &rec_have, SDL_AUDIO_ALLOW_FORMAT_CHANGE);
+	//Device failed to open
+	if (dev_rec == 0)
+	{
+		//Report error
+		write_log("SAMPLER: Failed to open recording device! SDL Error: %s", SDL_GetError());
 		return 0;
 	}
 
-	hr = lpDSB2r->Start (DSCBSTART_LOOPING);
-	if (FAILED (hr)) {
-		write_log (_T("SAMPLER: DirectSoundCaptureBuffer_Start('%s') failed: %s\n"), name, DXError (hr));
-		return 0;
-	}
+	//memset (&sound_buffer_rec, 0, sizeof (DSCBUFFERDESC));
+	//sound_buffer_rec.dwSize = sizeof (DSCBUFFERDESC);
+	//sound_buffer_rec.dwBufferBytes = recordbufferframes * SAMPLESIZE;
+	//sound_buffer_rec.lpwfxFormat = &wavfmt;
+	//sound_buffer_rec.dwFlags = 0 ;
+
+	//hr = lpDS2r->CreateCaptureBuffer (&sound_buffer_rec, &lpDSB2r, NULL);
+	//if (FAILED (hr)) {
+	//	write_log (_T("SAMPLER: CreateCaptureSoundBuffer('%s') failure: %s\n"), name, DXError(hr));
+	//	return 0;
+	//}
+
+	//hr = lpDSB2r->Start (DSCBSTART_LOOPING);
+	//if (FAILED (hr)) {
+	//	write_log (_T("SAMPLER: DirectSoundCaptureBuffer_Start('%s') failed: %s\n"), name, DXError (hr));
+	//	return 0;
+	//}
+
+	buffer_byte_size = rec_have.size;
+	//Allocate and initialize byte buffer
+	recording_buffer = new Uint8[buffer_byte_size];
+	memset(recording_buffer, 0, buffer_byte_size);
+
 	samplebuffer = xcalloc (uae_u8, sampleframes * SAMPLESIZE);
 	write_log (_T("SAMPLER: Parallel port sampler initialized, CPS=%f, '%s'\n"), clockspersample, name);
 	return 1;
@@ -90,17 +124,17 @@ static int capture_init (void)
 
 static void capture_free (void)
 {
-	if (lpDSB2r) {
-		lpDSB2r->Stop ();
-		lpDSB2r->Release ();
+	if (dev_rec) {
+		SDL_CloseAudioDevice(dev_rec);
 		write_log (_T("SAMPLER: Parallel port sampler freed\n"));
 	}
-	lpDSB2r = NULL;
-	if (lpDS2r)
-		lpDS2r->Release ();
-	lpDS2r = NULL;
+	if (recording_buffer)
+	{
+		delete[] recording_buffer;
+		recording_buffer = nullptr;
+	}
 	xfree (samplebuffer);
-	samplebuffer = NULL;
+	samplebuffer = nullptr;
 }
 
 static evt_t oldcycles;
@@ -114,10 +148,10 @@ uae_u8 sampler_getsample (int channel)
 	static float diffsample;
 #endif
 	static float doffset_offset;
-	HRESULT hr;
-	DWORD t;
+	//HRESULT hr;
+	//DWORD t;
 	void *p1, *p2;
-	DWORD len1, len2;
+	//DWORD len1, len2;
 	evt_t cycles;
 	int sample, samplecnt;
 	float doffset;
@@ -127,7 +161,7 @@ uae_u8 sampler_getsample (int channel)
 		channel = 0;
 
 	if (!inited) {
-		DWORD pos;
+		//DWORD pos;
 		if (!capture_init ()) {
 			capture_free ();
 			return 0;
@@ -136,17 +170,17 @@ uae_u8 sampler_getsample (int channel)
 		oldcycles = get_cycles ();
 		oldoffset = -1;
 		doffset_offset = 0;
-		hr = lpDSB2r->GetCurrentPosition (&t, &pos);
+/*		hr = lpDSB2r->GetCurrentPosition (&t, &pos);
 		if (FAILED (hr)) {
 			sampler_free ();
 			return 0;
-		}		
-		if (t >= pos)
-			safediff = t - pos;
-		else
-			safediff = recordbufferframes * SAMPLESIZE - pos + t;
-		write_log (_T("SAMPLER: safediff %d %d\n"), safediff, safediff + sampleframes * SAMPLESIZE);
-		safediff += 4 * sampleframes * SAMPLESIZE;
+		}	*/	
+		//if (t >= pos)
+		//	safediff = t - pos;
+		//else
+		//	safediff = recordbufferframes * SAMPLESIZE - pos + t;
+		//write_log (_T("SAMPLER: safediff %d %d\n"), safediff, safediff + sampleframes * SAMPLESIZE);
+		//safediff += 4 * sampleframes * SAMPLESIZE;
 
 #if 0
 		diffsample = 0;
@@ -186,20 +220,22 @@ uae_u8 sampler_getsample (int channel)
 				samplecnt++;
 			}
 		}
-		hr = lpDSB2r->GetCurrentPosition (&t, NULL);
-		int pos = t;
+		//hr = lpDSB2r->GetCurrentPosition (&t, NULL);
+		int pos = buffer_byte_pos;
 		pos -= safediff;
 		if (pos < 0)
 			pos += recordbufferframes * SAMPLESIZE;
-		hr = lpDSB2r->Lock (pos, sampleframes * SAMPLESIZE, &p1, &len1, &p2, &len2, 0);
-		if (FAILED (hr)) {
-			write_log (_T("SAMPLER: Lock() failed %x\n"), hr);
-			return 0;
-		}
-		memcpy (samplebuffer, p1, len1);
-		if (p2)
-			memcpy (samplebuffer + len1, p2, len2);
-		lpDSB2r->Unlock (p1, len1, p2, len2);
+		//hr = lpDSB2r->Lock (pos, sampleframes * SAMPLESIZE, &p1, &len1, &p2, &len2, 0);
+		//if (FAILED (hr)) {
+		//	write_log (_T("SAMPLER: Lock() failed %x\n"), hr);
+		//	return 0;
+		//}
+		SDL_LockAudioDevice(dev_rec);
+		memcpy (samplebuffer, recording_buffer, buffer_byte_size);
+		//if (p2)
+		//	memcpy (samplebuffer + len1, p2, len2);
+		//lpDSB2r->Unlock (p1, len1, p2, len2);
+		SDL_UnlockAudioDevice(dev_rec);
 
 #if 0
 		cap_pos = t;
@@ -272,7 +308,7 @@ uae_u8 sampler_getsample (int channel)
 
 int sampler_init (void)
 {
-	if (currprefs.win32_samplersoundcard < 0)
+	if (currprefs.samplersoundcard < 0)
 		return 0;
 	return 1;
 }
@@ -297,4 +333,13 @@ void sampler_vsync (void)
 		sampler_free ();
 		return;
 	}
+}
+
+void audioRecordingCallback(void* userdata, Uint8* stream, int len)
+{
+	//Copy audio from stream
+	memcpy(&recording_buffer[buffer_byte_pos], stream, len);
+
+	//Move along buffer
+	buffer_byte_pos += len;
 }

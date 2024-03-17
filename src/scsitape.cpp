@@ -17,7 +17,9 @@
 #include "zfile.h"
 #include "memory.h"
 #include "threaddep/thread.h"
+#ifdef A2091
 #include "a2091.h"
+#endif
 #include "fsdb.h"
 
 int log_tapeemu = 1;
@@ -199,7 +201,7 @@ static void erase (struct scsi_data_tape *tape)
 			if (ext && !_tcsicmp (ext, _T(".tape"))) {
 				_stprintf (path, _T("%s%s%s"), tape->tape_dir, FSDB_DIR_SEPARATOR_S, filename);
 				if (my_existsfile (path))
-					my_unlink (path, false);
+					my_unlink (path);
 			}
 		}
 		my_closedir (od);

@@ -41,10 +41,14 @@
 #include "cpummu.h"
 #include "cpummu030.h"
 #include "ar.h"
+#ifdef WITH_PCI
 #include "pci.h"
+#endif
+#ifdef WITH_PPC
 #include "ppc/ppcd.h"
 #include "uae/io.h"
 #include "uae/ppc.h"
+#endif
 #include "drawing.h"
 #include "devices.h"
 #include "blitter.h"
@@ -2706,7 +2710,7 @@ static void decode_dma_record(int hpos, int vpos, int count, int toggle, bool lo
 		return;
 	dr_start = dr = &dma_record[dma_record_toggle ^ toggle][vpos * NR_DMA_REC_HPOS];
 	if (logfile)
-		write_dlog (_T("Line: %02X %3d HPOS %02X %3d:\n"), vpos, vpos, hpos, hpos);
+		write_log (_T("Line: %02X %3d HPOS %02X %3d:\n"), vpos, vpos, hpos, hpos);
 	else
 		console_out_f (_T("Line: %02X %3d HPOS %02X %3d:\n"), vpos, vpos, hpos, hpos);
 	h = hpos;
@@ -2792,13 +2796,13 @@ static void decode_dma_record(int hpos, int vpos, int count, int toggle, bool lo
 			}
 		}
 		if (logfile) {
-			write_dlog(_T("%s\n"), l1);
-			write_dlog(_T("%s\n"), l2);
-			write_dlog(_T("%s\n"), l3);
-			write_dlog(_T("%s\n"), l4);
-			write_dlog(_T("%s\n"), l5);
-			write_dlog(_T("%s\n"), l6);
-			write_dlog(_T("\n"));
+			write_log(_T("%s\n"), l1);
+			write_log(_T("%s\n"), l2);
+			write_log(_T("%s\n"), l3);
+			write_log(_T("%s\n"), l4);
+			write_log(_T("%s\n"), l5);
+			write_log(_T("%s\n"), l6);
+			write_log(_T("\n"));
 		} else {
 			console_out_f(_T("%s\n"), l1);
 			console_out_f(_T("%s\n"), l2);
@@ -4627,7 +4631,7 @@ static void memwatch (TCHAR **c)
 			while (*cs) {
 				for (int i = 0; memwatch_access_masks[i].mask; i++) {
 					const TCHAR *n = memwatch_access_masks[i].name;
-					int len = uaetcslen(n);
+					int len = _tcslen(n);
 					if (!_tcsnicmp(cs, n, len)) {
 						if (cs[len] == 0 || cs[len] == 10 || cs[len] == 13 || cs[len] == ' ') {
 							mwn->access_mask |= memwatch_access_masks[i].mask;
@@ -5066,7 +5070,9 @@ static void memory_map_dump_3(UaeMemoryMap *map, int log)
 			a1 = a2;
 		}
 	}
+#ifdef WITH_PCI
 	pci_dump(log);
+#endif
 	currprefs.illegal_mem = imold;
 }
 
@@ -6428,6 +6434,7 @@ static void m68k_modify (TCHAR **inptr)
 
 static void ppc_disasm(uaecptr addr, uaecptr *nextpc, int cnt)
 {
+#ifdef WITH_PPC
 	PPCD_CB disa;
 
 	while(cnt-- > 0) {
@@ -6444,6 +6451,7 @@ static void ppc_disasm(uaecptr addr, uaecptr *nextpc, int cnt)
 	}
 	if (nextpc)
 		*nextpc = addr;
+#endif
 }
 
 static void dma_disasm(int frames, int vp, int hp, int frames_end, int vp_end, int hp_end)
@@ -7429,7 +7437,7 @@ void debug (void)
 							seglist = BPTR2APTR(get_long_debug (activetask + 128));
 							seglist = BPTR2APTR(get_long_debug (seglist + 12));
 						}
-						if (activetask == processptr || (processname && (!stricmp (name, processname) || (command && command[0] && !strnicmp (command + 1, processname, command[0]) && processname[command[0]] == 0)))) {
+						if (activetask == processptr || (processname && (!stricmp (name, processname) || (command && command[0] && !_tcsnicmp (command + 1, processname, command[0]) && processname[command[0]] == 0)))) {
 							while (seglist) {
 								uae_u32 size = get_long_debug (seglist - 4) - 4;
 								if (pc >= (seglist + 4) && pc < (seglist + size)) {
@@ -8252,7 +8260,7 @@ void debug_trainer_match(void)
 
 static int parsetrainerdata(const TCHAR *data, uae_u16 *outdata, uae_u16 *outmask)
 {
-	int len = uaetcslen(data);
+	int len = _tcslen(data);
 	uae_u16 v = 0, vm = 0;
 	int j = 0;
 	for (int i = 0; i < len; ) {
@@ -8333,7 +8341,7 @@ void debug_init_trainer(const TCHAR *file)
 
 			struct trainerpatch *tp = xcalloc(struct trainerpatch, 1);
 
-			int datalen = (uaetcslen(data) + 3) / 4;
+			int datalen = (_tcslen(data) + 3) / 4;
 			tp->data = xcalloc(uae_u16, datalen);
 			tp->maskdata = xcalloc(uae_u16, datalen);
 			tp->length = parsetrainerdata(data, tp->data, tp->maskdata);
@@ -8344,7 +8352,7 @@ void debug_init_trainer(const TCHAR *file)
 				tp->offset = 0;
 
 			if (ini_getstring_multi(ini, section, _T("replacedata"), &data, &ictx)) {
-				int replacedatalen = (uaetcslen(data) + 3) / 4;
+				int replacedatalen = (_tcslen(data) + 3) / 4;
 				tp->replacedata = xcalloc(uae_u16, replacedatalen);
 				tp->replacemaskdata = xcalloc(uae_u16, replacedatalen);
 				tp->replacelength = parsetrainerdata(data, tp->replacedata, tp->replacemaskdata);

@@ -1,6 +1,6 @@
 /* floppybridge_abstract
 *
-* Copyright (C) 2021 Robert Smith (@RobSmithDev)
+* Copyright (C) 2021-2023 Robert Smith (@RobSmithDev)
 * https://amiga.robsmithdev.co.uk
 *
 * This library defines a standard interface for connecting physical disk drives to *UAE
@@ -13,6 +13,7 @@
 *
 */
 
+
 /*
 * This file, along with currently active and supported interfaces
 * are maintained from by GitHub repo at
@@ -22,6 +23,7 @@
 #pragma once
 
 #include <functional>
+#include <cstddef>
 
 #ifdef _WIN32
 #include <tchar.h>
@@ -57,27 +59,27 @@ public:
 	// Definition of the type of drive
 	enum class DriveTypeID : unsigned char { dti35DD = 0, dti35HD = 1, dti5255SD = 2 };
 
-	FloppyDiskBridge() {};
+	FloppyDiskBridge() {}
 	// This is just to force this being virtual
-	virtual ~FloppyDiskBridge() {};
+	virtual ~FloppyDiskBridge() {}
 
 	// Call to start the system up.  Return false if it fails
 	virtual bool initialise() = 0;
 
-	// This is called prior to closing down, but shoudl reverse initialise
-	virtual void shutdown() {};
+	// This is called prior to closing down, but should reverse initialise
+	virtual void shutdown() {}
 
 	// Returns the name of interface.  This pointer should remain valid *after* the class is destroyed so should be static
 	virtual const BridgeDriver* getDriverInfo()  = 0;
 
 	// Return the 'bit cell' time in uSec.  Standard DD Amiga disks this would be 2uS, HD disks would be 1us I guess, but mainly used for =4 for SD I think
-	virtual unsigned char getBitSpeed() { return 2; };
+	virtual unsigned char getBitSpeed() { return 2; }
 
 	// Return the type of disk connected.  This is used to tell WinUAE if we're DD or HD.  This must return INSTANTLY
 	virtual DriveTypeID getDriveTypeID()  = 0;
 
-	// Call to get the last error message.  If the board initialised this may return a compatability warning instead
-	virtual const char* getLastErrorMessage() { return NULL; };
+	// Call to get the last error message.  If the board initialised this may return a compatibility warning instead
+	virtual const char* getLastErrorMessage() { return NULL; }
 
 	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -109,7 +111,7 @@ public:
 
 
 	/////////////////////// Drive Motor Controls /////////////////////////////////////////////
-	// Return true if the motor is spinning, but not necessarly up to speed
+	// Return true if the motor is spinning, but not necessarily up to speed
 	virtual bool isMotorRunning()  = 0;
 
 	// Turn on and off the motor
@@ -125,7 +127,7 @@ public:
 	// Return TRUE if there is a disk in the drive.  This is usually called after gotoCylinder
 	virtual bool isDiskInDrive()  = 0;
 
-	// Check if the disk has changed.  Basically returns FALSE if theres no disk in the drive
+	// Check if the disk has changed.  Basically returns FALSE if there's no disk in the drive
 	virtual bool hasDiskChanged()  = 0;
 
 
@@ -151,7 +153,7 @@ public:
 	// Quick confirmation from UAE that we're actually on the same side
 	virtual void setSurface(bool side)  = 0;
 
-	// Return the maximum size of bits available in this revolution.  This is the maximimum passed to getMFMBit
+	// Return the maximum size of bits available in this revolution.  This is the maximum passed to getMFMBit
 	virtual int maxMFMBitPosition()  = 0;
 
 	/////////////////////// Writing Data /////////////////////////////////////////////////////
@@ -160,11 +162,11 @@ public:
 	// You should reset this buffer if side or track changes, mfmPosition is provided purely for any index sync you may wish to do
 	virtual void writeShortToBuffer(bool side, unsigned int track, unsigned short mfmData, int mfmPosition)  = 0;
 
-	// Return TRUE if the currently insrted disk is write protected
+	// Return TRUE if the currently inserted disk is write protected
 	virtual bool isWriteProtected()  = 0;
 
 	// Requests that any data received via writeShortToBuffer be saved to disk. The side and track should match against what you have been collected
-	// and the buffer should be reset upon completion.  You should return the new tracklength (maxMFMBitPosition) with optional padding if needed
+	// and the buffer should be reset upon completion.  You should return the new track length (maxMFMBitPosition) with optional padding if needed
 	virtual unsigned int commitWriteBuffer(bool side, unsigned int track)  = 0;
 
 	// Returns TRUE if commitWriteBuffer has been called but not written to disk yet

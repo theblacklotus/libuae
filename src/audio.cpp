@@ -33,14 +33,16 @@
 #include "gui.h"
 #include "xwin.h"
 #include "debug.h"
-#include "sndboard.h"
+//#include "sndboard.h"
 #ifdef AVIOUTPUT
 #include "avioutput.h"
 #endif
 #ifdef AHI
 #include "traps.h"
-#include "ahidsound.h"
-#include "ahidsound_new.h"
+#include "ahi_v1.h"
+#ifdef AHI_v2
+#include "ahi_v2.h"
+#endif
 #endif
 #include "threaddep/thread.h"
 
@@ -85,7 +87,7 @@ STATIC_INLINE bool usehacks(void)
  * sufficient for all imaginable purposes. This must be power of two. */
 #define SINC_QUEUE_LENGTH 256
 
-#include "sinctable.cpp"
+#include "sinctable.cpp.in"
 
 typedef struct {
 	int time, output;
@@ -221,7 +223,7 @@ static void namesplit (TCHAR *s)
 {
 	int l;
 
-	l = uaetcslen(s) - 1;
+	l = _tcslen(s) - 1;
 	while (l >= 0) {
 		if (s[l] == '.')
 			s[l] = 0;
@@ -432,8 +434,7 @@ static float filter_a0; /* a500 and a1200 use the same */
 enum {
 	FILTER_NONE = 0,
 	FILTER_MODEL_A500,
-	FILTER_MODEL_A1200,
-	FILTER_MODEL_A500_FIXEDONLY
+	FILTER_MODEL_A1200
 };
 
 /* Amiga has two separate filtering circuits per channel, a static RC filter
@@ -470,13 +471,6 @@ static int filter (int input, struct filter_state *fs)
 		fs->rc5 = filter_a0 * fs->rc4       + (1 - filter_a0) * fs->rc5;
 
 		led_output = fs->rc5;
-		break;
-
-	case FILTER_MODEL_A500_FIXEDONLY:
-		fs->rc1 = (float)(a500e_filter1_a0 * input + (1.0f - a500e_filter1_a0) * fs->rc1 + DENORMAL_OFFSET);
-		fs->rc2 = a500e_filter2_a0 * fs->rc1 + (1.0f - a500e_filter2_a0) * fs->rc2;
-		normal_output = fs->rc2;
-		led_output = fs->rc2;
 		break;
 
 	case FILTER_MODEL_A1200:
@@ -634,7 +628,7 @@ static void samplexx_sinc_handler (int *datasp, int ch_start, int ch_num)
 	int const *winsinc;
 
 	if (sound_use_filter_sinc && ch_start == 0) {
-		n = (sound_use_filter_sinc == FILTER_MODEL_A500 || sound_use_filter_sinc == FILTER_MODEL_A500_FIXEDONLY) ? 0 : 2;
+		n = (sound_use_filter_sinc == FILTER_MODEL_A500) ? 0 : 2;
 		if (led_filter_on)
 			n += 1;
 	} else {
@@ -663,7 +657,7 @@ static void samplexx_sinc_handler (int *datasp, int ch_start, int ch_num)
 		else if (v < -32768)
 			v = -32768;
 		datasp[k] = v;
-    }
+	}
 }
 
 static void do_filter(int *data, int num)
@@ -1606,7 +1600,7 @@ static void loaddat (int nr, bool modper)
 			return;
 		if (modper && audap) {
 			if (cdp->dat == 0)
-                cdp[1].per = 65536 * CYCLE_UNIT;
+				cdp[1].per = 65536 * CYCLE_UNIT;
 			else if (cdp->dat > PERIOD_MIN)
 				cdp[1].per = cdp->dat * CYCLE_UNIT;
 			else
@@ -2011,8 +2005,10 @@ void audio_reset (void)
 	struct audio_channel_data *cdp;
 
 #ifdef AHI
-	ahi_close_sound ();
-	free_ahi_v2 ();
+	ahi_close_sound();
+#ifdef AHI_v2
+	free_ahi_v2();
+#endif
 #endif
 	reset_sound ();
 	memset (sound_filter_state, 0, sizeof sound_filter_state);
@@ -2020,7 +2016,7 @@ void audio_reset (void)
 		for (i = 0; i < AUDIO_CHANNELS_PAULA; i++) {
 			cdp = &audio_channel[i];
 			memset (cdp, 0, sizeof *audio_channel);
-			cdp->per = PERIOD_MAX - 1;
+			cdp->per = static_cast<int>(PERIOD_MAX) - 1;
 			cdp->data.mixvol = 0;
 			cdp->evtime = MAX_EV;
 		}
@@ -2043,7 +2039,10 @@ static int sound_prefs_changed (void)
 	if (!config_changed)
 		return 0;
 	if (changed_prefs.produce_sound != currprefs.produce_sound
-		|| changed_prefs.win32_soundcard != currprefs.win32_soundcard
+		|| changed_prefs.soundcard != currprefs.soundcard
+#ifdef AMIBERRY
+		|| changed_prefs.soundcard_default != currprefs.soundcard_default
+#endif
 		|| changed_prefs.sound_stereo != currprefs.sound_stereo
 		|| changed_prefs.sound_maxbsiz != currprefs.sound_maxbsiz
 		|| changed_prefs.sound_freq != currprefs.sound_freq
@@ -2132,7 +2131,10 @@ void set_audio (void)
 		close_sound ();
 
 	currprefs.produce_sound = changed_prefs.produce_sound;
-	currprefs.win32_soundcard = changed_prefs.win32_soundcard;
+	currprefs.soundcard = changed_prefs.soundcard;
+#ifdef AMIBERRY
+	currprefs.soundcard_default = changed_prefs.soundcard_default;
+#endif
 	currprefs.sound_stereo = changed_prefs.sound_stereo;
 	active_sound_stereo = currprefs.sound_stereo;
 	currprefs.sound_auto = changed_prefs.sound_auto;
@@ -2155,7 +2157,7 @@ void set_audio (void)
 
 	sound_cd_volume[0] = sound_cd_volume[1] = (100 - (currprefs.sound_volume_cd < 0 ? 0 : currprefs.sound_volume_cd)) * 32768 / 100;
 	sound_paula_volume[0] = sound_paula_volume[1] = (100 - currprefs.sound_volume_paula) * 32768 / 100;
-	sndboard_ext_volume();
+	//sndboard_ext_volume();
 
 	if (ch >= 0) {
 		if (currprefs.produce_sound >= 2) {
@@ -2201,8 +2203,6 @@ void set_audio (void)
 			sound_use_filter = FILTER_MODEL_A500;
 		else if (currprefs.sound_filter_type == FILTER_SOUND_TYPE_A1200)
 			sound_use_filter = FILTER_MODEL_A1200;
-		else if (currprefs.sound_filter_type == FILTER_SOUND_TYPE_A500_FIXEDONLY)
-			sound_use_filter = FILTER_MODEL_A500_FIXEDONLY;
 	}
 	a500e_filter1_a0 = rc_calculate_a0 (currprefs.sound_freq, 6200);
 	a500e_filter2_a0 = rc_calculate_a0 (currprefs.sound_freq, 20000);
@@ -2790,7 +2790,7 @@ uae_u8 *restore_audio (int nr, uae_u8 *src)
 	acd->len = restore_u16 ();
 	acd->wlen = restore_u16 ();
 	uae_u16 p = restore_u16 ();
-	acd->per = p ? p * CYCLE_UNIT : PERIOD_MAX;
+	acd->per = p ? p * CYCLE_UNIT : int(PERIOD_MAX);
 	acd->dat = acd->dat2 = restore_u16 ();
 	acd->lc = restore_u32 ();
 	acd->pt = restore_u32 ();

@@ -7,15 +7,19 @@
 #include "threaddep/thread.h"
 #include "memory.h"
 #include "audio.h"
+#ifdef GFXBOARD
 #include "gfxboard.h"
+#endif
 #include "scsi.h"
 #include "scsidev.h"
 #include "sana2.h"
 #include "clipboard.h"
 #include "cpuboard.h"
-#include "sndboard.h"
+//#include "sndboard.h"
 #include "statusline.h"
+#ifdef WITH_PPC
 #include "uae/ppc.h"
+#endif
 #ifdef CD32
 #include "cd32_fmv.h"
 #include "akiko.h"
@@ -47,14 +51,21 @@
 #include "uaenative.h"
 #endif
 #include "tabletlibrary.h"
+#ifdef WITH_LUA
 #include "luascript.h"
+#endif
 #ifdef DRIVESOUND
 #include "driveclick.h"
 #endif
+#ifdef WITH_X86
 #include "x86.h"
+#endif
 #include "ethernet.h"
 #include "drawing.h"
-#include "videograb.h"
+//#include "videograb.h"
+#ifdef AHI
+#include "ahi_v1.h"
+#endif
 #include "rommgr.h"
 #include "newcpu.h"
 #ifdef WITH_MIDIEMU
@@ -63,8 +74,12 @@
 #ifdef RETROPLATFORM
 #include "rp.h"
 #endif
+#ifdef WITH_DRACO
 #include "draco.h"
+#endif
+#ifdef WITH_DSP
 #include "dsp3210/dsp_glue.h"
+#endif
 
 #define MAX_DEVICE_ITEMS 64
 
@@ -236,6 +251,9 @@ void devices_reset(int hardreset)
 #if defined (PARALLEL_PORT)
 	initparallel();
 #endif
+#if defined (AHI)
+	init_ahi();
+#endif
 	dongle_reset();
 	sampler_init();
 	device_func_reset();
@@ -271,6 +289,9 @@ void devices_hsync(void)
 	CIA_hsync_prehandler();
 
 	decide_blitter(-1);
+#ifdef AHI
+	ahi_hsync();
+#endif
 #ifdef SERIAL_PORT
 	serial_hsynchandler();
 #endif
@@ -297,9 +318,11 @@ void devices_rethink(void)
 void devices_update_sound(float clk, float syncadjust)
 {
 	update_sound (clk);
-	update_sndboard_sound (clk / syncadjust);
+	//update_sndboard_sound (clk / syncadjust);
 	update_cda_sound(clk / syncadjust);
+#ifdef WITH_X86
 	x86_update_sound(clk / syncadjust);
+#endif
 #ifdef WITH_MIDIEMU
 	midi_update_sound(clk / syncadjust);
 #endif
@@ -331,7 +354,7 @@ void virtualdevice_free(void)
 	sampler_free();
 	inputdevice_close();
 	DISK_free();
-	dump_counts();
+	//dump_counts();
 #ifdef SERIAL_PORT
 	serial_exit();
 #endif
@@ -342,7 +365,9 @@ void virtualdevice_free(void)
 #ifdef WITH_LUA
 	uae_lua_free();
 #endif
+#ifdef GFXBOARD
 	gfxboard_free();
+#endif
 	savestate_free();
 	memory_cleanup();
 	free_shm();
@@ -365,10 +390,10 @@ void do_leave_program (void)
 	close_sound();
 	if (! no_gui)
 		gui_exit();
-#ifdef USE_SDL
+#ifdef AMIBERRY
 	SDL_Quit();
 #endif
-	machdep_free();
+	//machdep_free();
 }
 
 void virtualdevice_init (void)
@@ -438,7 +463,9 @@ void devices_restore_start(void)
 
 void devices_syncchange(void)
 {
+#ifdef WITH_X86
 	x86_bridge_sync_change();
+#endif
 }
 
 void devices_pause(void)
@@ -453,7 +480,7 @@ void devices_pause(void)
 #ifdef RETROPLATFORM
 	rp_pause(1);
 #endif
-	pausevideograb(1);
+	//pausevideograb(1);
 	ethernet_pause(1);
 }
 
@@ -469,7 +496,7 @@ void devices_unpause(void)
 #ifdef WITH_DSP
 	dsp_pause(0);
 #endif
-	pausevideograb(0);
+	//pausevideograb(0);
 	ethernet_pause(0);
 }
 

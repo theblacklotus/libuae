@@ -18,11 +18,20 @@ Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
 #include "sysconfig.h"
 #include "sysdeps.h"
 
-#include <stdlib.h>
+#include <cstdlib>
 #include <sys/types.h>
 
 #ifdef HAVE_SYS_STAT_H
 #include <sys/stat.h>
+#endif
+
+#if defined(STAT_STATVFS) && !defined(__ANDROID__)
+#include <sys/statvfs.h>
+// For osx, sigurbjornl
+#elif defined (__MACH__)
+#include <sys/mount.h>
+#else
+#include <sys/vfs.h>
 #endif
 
 #include "fsusage.h"
@@ -100,7 +109,7 @@ int statfs ();
 # include <sys/mount.h>
 #endif
 
-#if HAVE_SYS_VFS_H
+#if HAVE_SYS_VFS_H and !defined(__MACH__)
 # include <sys/vfs.h>
 #endif
 
@@ -116,7 +125,7 @@ int statfs ();
 # include <fcntl.h>
 #endif
 
-#if HAVE_SYS_STATFS_H
+#if HAVE_SYS_STATFS_H and !defined(__MACH__)
 # include <sys/statfs.h>
 #endif
 
@@ -286,8 +295,7 @@ int get_fs_usage (const TCHAR *path, const TCHAR *disk, struct fs_usage *fsp)
 # define CONVERT_BLOCKS(B) \
 	adjust_blocks ((B), fsd.f_frsize ? fsd.f_frsize : fsd.f_bsize, 512)
 
-	struct statvfs fsd;
-
+	struct statvfs fsd{};
 	if (statvfs (path, &fsd) < 0)
 		return -1;
 	/* f_frsize isn't guaranteed to be supported.  */
@@ -297,11 +305,8 @@ int get_fs_usage (const TCHAR *path, const TCHAR *disk, struct fs_usage *fsp)
 #if !defined(STAT_STATFS2_FS_DATA) && !defined(STAT_READ_FILSYS)
 	/* !Ultrix && !SVR2 */
 
-	fsp->fsu_blocks = CONVERT_BLOCKS (fsd.f_blocks);
-	fsp->fsu_bfree = CONVERT_BLOCKS (fsd.f_bfree);
-	fsp->fsu_bavail = CONVERT_BLOCKS (fsd.f_bavail);
-	fsp->fsu_files = fsd.f_files;
-	fsp->fsu_ffree = fsd.f_ffree;
+	fsp->total = (uae_s64)fsd.f_bsize * (uae_s64)fsd.f_blocks;
+	fsp->avail = (uae_s64)fsd.f_bsize * (uae_s64)fsd.f_bavail;
 
 #endif /* not STAT_STATFS2_FS_DATA && not STAT_READ_FILSYS */
 

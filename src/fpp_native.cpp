@@ -10,15 +10,17 @@
 
 #define __USE_ISOC9X  /* We might be able to pick up a NaN */
 
-#include <math.h>
-#include <float.h>
-#include <fenv.h>
+#include <cmath>
+#include <cfloat>
+#include <cfenv>
 
 #include "sysconfig.h"
 #include "sysdeps.h"
 
 #define USE_HOST_ROUNDING 1
-#define SOFTFLOAT_CONVERSIONS 1
+#ifndef AMIBERRY
+#define SOFTFLOAT_CONVERSIONS 0
+#endif
 
 #include "options.h"
 #include "memory.h"
@@ -197,7 +199,9 @@ static void fp_set_mode(uae_u32 mode_control)
 				break;
 		}
 	}
+#ifndef AMIBERRY
 	native_set_fpucw(mode_control);
+#endif
 #endif
 	fpu_mode_control = mode_control;
 }
@@ -380,7 +384,11 @@ static void fp_from_exten(fpdata *fpd, uae_u32 *wrd1, uae_u32 *wrd2, uae_u32 *wr
 #endif
 }
 #else // if !USE_LONG_DOUBLE
+#ifdef CPU_AARCH64
+void fp_to_exten(fpdata *fpd, uae_u32 wrd1, uae_u32 wrd2, uae_u32 wrd3)
+#else
 static void fp_to_exten(fpdata *fpd, uae_u32 wrd1, uae_u32 wrd2, uae_u32 wrd3)
+#endif
 {
 #if SOFTFLOAT_CONVERSIONS
 	floatx80 fx80;

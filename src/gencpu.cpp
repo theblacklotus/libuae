@@ -33,9 +33,6 @@
 // instruction is considered completed, generate short bus error stack frame.
 #define MMU68030_LAST_WRITE 1
 
-// Not useful
-#define WAITSTATUS_020_EXTRA 0
-
 static FILE *headerfile;
 static FILE *stblfile;
 
@@ -2449,7 +2446,11 @@ static void check_bus_error(const char *name, int offset, int write, int size, c
 				out("opcode |= 0x80000;\n");
 			} else if (g_instr->mnemo == i_CLR) {
 				if (g_instr->smode < Ad16) {
+					out("#if defined(CPU_i386) || defined(CPU_x86_64)\n");
 					out("regflags.cznv = oldflags.cznv;\n");
+					out("#else // we assume CPU_arm or CPU_AARCH64 here\n");
+					out("regflags.nzcv = oldflags.nzcv;\n");
+					out("#endif\n");
 				}
 				// (an)+ and -(an) is done later
 				if (g_instr->smode == Aipi || g_instr->smode == Apdi) {
@@ -2653,7 +2654,7 @@ static void addop_ce020 (struct instr *curi, int subhead, int flags)
 		int h = curi->head;
 		int t = curi->tail;
 		int c = curi->clocks;
-	#if WAITSTATUS_020_EXTRA
+	#if 0
 		if ((((curi->sduse & 2) && !isreg (curi->smode)) || (((curi->sduse >> 4) & 2) && !isreg (curi->dmode))) && using_waitstates) {
 			t += using_waitstates;
 			c += using_waitstates;
@@ -2714,11 +2715,6 @@ static void addcycles_ea_ce020 (const char *ea, int h, int t, int c)
 
 #define SETCE020(h2,t2,c2) { h = h2; t = t2; c = c2; }
 #define SETCE020H(h2,t2,c2) { h = h2; oph = curi ? curi->head : 0; t = t2; c = c2; }
-#if WAITSTATUS_020_EXTRA
-#define SETCE020WS(h2,t2,c2,ws2) { h = h2; t = t2; c = c2; ws = ws2; }
-#else
-#define SETCE020WS(h2,t2,c2,ws2) { h = h2; t = t2; c = c2; }
-#endif
 
 static int gence020cycles_fiea (struct instr *curi, wordsizes ssize, amodes dmode)
 {
@@ -2848,42 +2844,45 @@ static int gence020cycles_ciea (struct instr *curi, wordsizes ssize, amodes dmod
 
 static int gence020cycles_fea (amodes mode)
 {
-	int h = 0, t = 0, c = 0;
-#if WAITSTATUS_020_EXTRA
-	int ws = 0;
-#endif
-
+	int h = 0, t = 0, c = 0, ws = 0;
 	switch (mode)
 	{
 	case Dreg:
 	case Areg:
-		SETCE020WS(0, 0, 0, 0)
+		SETCE020(0, 0, 0)
 		break;
 	case Aind: // (An)
-		SETCE020WS(1, 1, 3, 1)
+		ws++;
+		SETCE020(1, 1, 3)
 		break;
 	case Aipi: // (An)+
-		SETCE020WS(0, 1, 3, 1)
+		ws++;
+		SETCE020(0, 1, 3)
 		break;
 	case Apdi: // -(An)
-		SETCE020WS(2, 2, 4, 1)
+		ws++;
+		SETCE020(2, 2, 4)
 		break;
 	case Ad8r: // (d8,An,Xn)
 	case PC8r: // (d8,PC,Xn)
-		SETCE020WS(4, 2, 6, 1)
+		ws++;
+		SETCE020(4, 2, 6)
 		break;
 	case Ad16: // (d16,An)
 	case PC16: // (d16,PC)
-		SETCE020WS(2, 2, 4, 1)
+		ws++;
+		SETCE020(2, 2, 4)
 		break;
 	case absw:
-		SETCE020WS(2, 2, 4, 1)
+		ws++;
+		SETCE020(2, 2, 4)
 		break;
 	case absl:
-		SETCE020WS(1, 0, 4, 1)
+		ws++;
+		SETCE020(1, 0, 4)
 		break;
 	}
-#if WAITSTATUS_020_EXTRA
+#if 0
 	if (using_waitstates) {
 		t += ws * using_waitstates;
 		c += ws * using_waitstates;
@@ -3104,7 +3103,11 @@ static void move_68010_address_error(int size, int *setapdi, int *fcmodeflags)
 			out("regs.irc = dsta >> 16;\n");
 		}
 		if (reset_ccr) {
+			out("#if defined(CPU_i386) || defined(CPU_x86_64)\n");
 			out("regflags.cznv = oldflags.cznv;\n");
+			out("#else // we assume CPU_arm or CPU_AARCH64 here\n");
+			out("regflags.nzcv = oldflags.nzcv;\n");
+			out("#endif\n");
 		}
 		if (set_ccr) {
 			out("ccr_68000_word_move_ae_normal((uae_s16)(src));\n");
@@ -6162,7 +6165,11 @@ static void gen_opcode (unsigned int opcode)
 			}
 		} else if (cpu_level == 1) {
 			out("struct flag_struct oldflags;\n");
+			out("#if defined(CPU_i386) || defined(CPU_x86_64)\n");
 			out("oldflags.cznv = regflags.cznv;\n");
+			out("#else // we assume CPU_arm or CPU_AARCH64 here\n");
+			out("oldflags.nzcv = regflags.nzcv;\n");
+			out("#endif\n");
 			genamode(curi, curi->smode, "srcreg", curi->size, "src", 3, 0, GF_CLR68010);
 			if (isreg(curi->smode) && curi->size == sz_long) {
 				addcycles000(2);
@@ -6672,7 +6679,11 @@ static void gen_opcode (unsigned int opcode)
 				if (curi->mnemo == i_MOVE) {
 					if (cpu_level == 1 && (isreg(curi->smode) || curi->smode == imm)) {
 						out("struct flag_struct oldflags;\n");
+						out("#if defined(CPU_i386) || defined(CPU_x86_64)\n");
 						out("oldflags.cznv = regflags.cznv;\n");
+						out("#else // we assume CPU_arm or CPU_AARCH64 here\n");
+						out("oldflags.nzcv = regflags.nzcv;\n");
+						out("#endif\n");
 					}
 					if (curi->size == sz_long && (using_prefetch || using_ce) && curi->dmode >= Aind) {
 						// to support bus error exception correct flags, flags needs to be set

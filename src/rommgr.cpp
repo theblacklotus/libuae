@@ -1353,7 +1353,7 @@ void addkeydir(const TCHAR *path)
 	_tcscpy(tmp, path);
 	if (zfile_exists(tmp)) {
 		int i;
-		for (i = uaetcslen(tmp) - 1; i > 0; i--) {
+		for (i = _tcslen(tmp) - 1; i > 0; i--) {
 			if (tmp[i] == '\\' || tmp[i] == '/')
 				break;
 		}
@@ -1419,11 +1419,11 @@ int load_keyring (struct uae_prefs *p, const TCHAR *path)
 			_tcscpy (tmp, _T("roms/rom.key"));
 			break;
 		case 4:
-			_tcscpy (tmp, start_path_data);
+			_tcscpy (tmp, start_path_data.c_str());
 			_tcscat (tmp, _T("rom.key"));
 			break;
 		case 5:
-			_stprintf (tmp, _T("%s../shared/rom/rom.key"), start_path_data);
+			_stprintf (tmp, _T("%s../shared/rom/rom.key"), start_path_data.c_str());
 			break;
 		case 6:
 			if (p) {
@@ -2283,7 +2283,7 @@ struct zfile *read_rom_name_guess (const TCHAR *filename, TCHAR *out)
 	struct zfile *f;
 	const TCHAR *name;
 
-	for (i = uaetcslen(filename) - 1; i >= 0; i--) {
+	for (i = _tcslen(filename) - 1; i >= 0; i--) {
 		if (filename[i] == '/' || filename[i] == '\\')
 			break;
 	}
@@ -2293,7 +2293,7 @@ struct zfile *read_rom_name_guess (const TCHAR *filename, TCHAR *out)
 
 	for (i = 0; i < romlist_cnt; i++) {
 		TCHAR *n = rl[i].path;
-		for (j = uaetcslen(n) - 1; j >= 0; j--) {
+		for (j = _tcslen(n) - 1; j >= 0; j--) {
 			if (n[j] == '/' || n[j] == '\\')
 				break;
 		}
@@ -2353,7 +2353,7 @@ static void clean_path(TCHAR *s)
 		if (s[v] == 0) {
 			break;
 		}
-		memmove(s + v, s + v + 1, (uaetcslen(s + v + 1) + 1) * sizeof(TCHAR));
+		memmove(s + v, s + v + 1, (_tcslen(s + v + 1) + 1) * sizeof(TCHAR));
 	}
 }
 
@@ -2399,15 +2399,17 @@ int configure_rom (struct uae_prefs *p, const int *rom, int msg)
 		set_device_rom(p, path, ROMTYPE_CPUBOARD, 0);
 
 	if (rd->type & (ROMTYPE_ARCADIAGAME | ROMTYPE_ALG)) {
-		fetch_nvrampath(p->flashfile, sizeof(p->flashfile) / sizeof(TCHAR));
+		get_nvram_path(p->flashfile, sizeof(p->flashfile) / sizeof(TCHAR));
 		_stprintf(p->flashfile + _tcslen(p->flashfile), _T("%s.nvr"), rd->name);
 		clean_path(p->flashfile);
 	}
+#ifdef ARCADIA
 	if (rd->type & ROMTYPE_ALG) {
-		fetch_videopath(p->genlock_video_file, sizeof(p->genlock_video_file) / sizeof(TCHAR));
+		get_video_path(p->genlock_video_file, sizeof(p->genlock_video_file) / sizeof(TCHAR));
 		_stprintf(p->genlock_video_file + _tcslen(p->genlock_video_file), _T("%s.avi"), rd->name);
 		clean_path(p->genlock_video_file);
 	}
+#endif
 	return 1;
 }
 
@@ -2835,7 +2837,7 @@ struct zfile *flashromfile_open(const TCHAR *name)
 			rw = false;
 			f = zfile_fopen(name, _T("rb"), ZFD_NORMAL);
 			if (!f) {
-				fetch_rompath(path, sizeof path / sizeof(TCHAR));
+				get_rom_path(path, sizeof path / sizeof(TCHAR));
 				_tcscat(path, name);
 				rw = true;
 				f = zfile_fopen(path, _T("rb+"), ZFD_NONE);

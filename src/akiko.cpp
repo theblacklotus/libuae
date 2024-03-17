@@ -198,11 +198,15 @@ static void *cd32_eeprom;
 static uae_u8 cd32_i2c_direction;
 static bool cd32_i2c_data_scl, cd32_i2c_data_sda;
 struct zfile *cd32_flashfile;
+#ifdef ARCADIA
 extern uae_u8 *cubo_nvram;
+#endif
 
 static void nvram_read (void)
 {
+#ifdef ARCADIA
 	cubo_nvram = NULL;
+#endif
 	zfile_fclose(cd32_flashfile);
 	cd32_flashfile = NULL;
 	eeprom_free(cd32_eeprom);
@@ -219,9 +223,11 @@ static void nvram_read (void)
 		cd32_nvram = xmalloc(uae_u8, maxlen);
 	}
 	memset(cd32_nvram, 0, maxlen);
+#ifdef ARCADIA
 	if (is_board_enabled(&currprefs, ROMTYPE_CUBO, 0)) {
 		cubo_nvram = cd32_nvram + currprefs.cs_cd32nvram_size;
 	}
+#endif
 	TCHAR path[MAX_DPATH];
 	cfgfile_resolve_path_out_load(currprefs.flashfile, path, MAX_DPATH, PATH_ROM);
 	cd32_flashfile = zfile_fopen (path, _T("rb+"), ZFD_NORMAL);
@@ -229,8 +235,10 @@ static void nvram_read (void)
 		cd32_flashfile = zfile_fopen (path, _T("wb"), 0);
 	if (cd32_flashfile) {
 		size_t size = zfile_fread(cd32_nvram, 1, currprefs.cs_cd32nvram_size, cd32_flashfile);
+#ifdef ARCADIA
 		if (size == currprefs.cs_cd32nvram_size && maxlen > currprefs.cs_cd32nvram_size)
 			size += zfile_fread(cubo_nvram, 1, maxlen - currprefs.cs_cd32nvram_size, cd32_flashfile);
+#endif
 		if (size < maxlen)
 			zfile_fwrite(cd32_nvram + size, 1, maxlen - size, cd32_flashfile);
 	}
@@ -242,10 +250,6 @@ static void akiko_nvram_write (int offset, uae_u32 v)
 	switch (offset)
 	{
 	case 0:
-	{
-#if EEPROM_DEBUG
-		uae_u8 o = (cd32_i2c_data_scl ? 0x80 : 0x00) | (cd32_i2c_data_sda ? 0x40 : 0x00);
-#endif
 		if (cd32_i2c_direction & 0x80)
 			cd32_i2c_data_scl = (v & 0x80) != 0;
 		else
@@ -256,22 +260,10 @@ static void akiko_nvram_write (int offset, uae_u32 v)
 		else
 			cd32_i2c_data_sda = true;
 		eeprom_i2c_set(cd32_eeprom, BITBANG_I2C_SDA, cd32_i2c_data_sda);
-#if EEPROM_DEBUG
-		uae_u8 n = (cd32_i2c_data_scl ? 0x80 : 0x00) | (cd32_i2c_data_sda ? 0x40 : 0x00);
-		write_log(_T("Data write: %02x->%02x (%02x)\n"), o, v, n);
-#endif
 		break;
-	}
 	case 2:
-	{
-#if EEPROM_DEBUG
-		if (cd32_i2c_direction != v) {
-			write_log(_T("Direction write: %02x->%02x\n"), cd32_i2c_direction, v);
-		}
-#endif
 		cd32_i2c_direction = v;
 		break;
-	}
 	}
 }
 
@@ -283,15 +275,9 @@ static uae_u32 akiko_nvram_read (int offset)
 	case 0:
 		v |= eeprom_i2c_set(cd32_eeprom, BITBANG_I2C_SCL, cd32_i2c_data_scl) ? 0x80 : 0x00;
 		v |= eeprom_i2c_set(cd32_eeprom, BITBANG_I2C_SDA, cd32_i2c_data_sda) ? 0x40 : 0x00;
-#if EEPROM_DEBUG
-		write_log(_T("Data read: %02x\n"), v);
-#endif
 		break;
 	case 2:
 		v = cd32_i2c_direction;
-#if EEPROM_DEBUG
-		write_log(_T("Direction read: %02x\n"), v);
-#endif
 		break;
 	}
 	return v;
@@ -306,20 +292,6 @@ static uae_u32 akiko_buffer[8];
 static int akiko_read_offset, akiko_write_offset;
 static uae_u32 akiko_result[8];
 
-#if 0
-static void akiko_c2p_do (void)
-{
-	int i;
-
-	for (i = 0; i < 8; i++)
-		akiko_result[i] = 0;
-	/* FIXME: better c2p algoritm than this piece of crap.... */
-	for (i = 0; i < 8 * 32; i++) {
-		if (akiko_buffer[7 - (i >> 5)] & (1 << (i & 31)))
-			akiko_result[i & 7] |= 1 << (i >> 3);
-	}
-}
-#else
 /* Optimised Chunky-to-Planar algorithm by Mequa */
 static uae_u32 akiko_precalc_shift[32];
 static uae_u32 akiko_precalc_bytenum[32][8];
@@ -340,40 +312,39 @@ static void akiko_c2p_do(void)
 
 	for (i = 0; i < 8; i++) {
 		akiko_result[i]    =  (((akiko_buffer[0] & akiko_precalc_shift[i])    != 0) << (akiko_precalc_bytenum[i][0])   )
-				    	   |  (((akiko_buffer[1] & akiko_precalc_shift[i])    != 0) << (akiko_precalc_bytenum[i][1])   )
-				    	   |  (((akiko_buffer[2] & akiko_precalc_shift[i])    != 0) << (akiko_precalc_bytenum[i][2])   )
-				    	   |  (((akiko_buffer[3] & akiko_precalc_shift[i])    != 0) << (akiko_precalc_bytenum[i][3])   )
-				    	   |  (((akiko_buffer[4] & akiko_precalc_shift[i])    != 0) << (akiko_precalc_bytenum[i][4])   )
-				    	   |  (((akiko_buffer[5] & akiko_precalc_shift[i])    != 0) << (akiko_precalc_bytenum[i][5])   )
-				    	   |  (((akiko_buffer[6] & akiko_precalc_shift[i])    != 0) << (akiko_precalc_bytenum[i][6])   )
-				    	   |  (((akiko_buffer[7] & akiko_precalc_shift[i])    != 0) << (akiko_precalc_bytenum[i][7])   )
+						   |  (((akiko_buffer[1] & akiko_precalc_shift[i])    != 0) << (akiko_precalc_bytenum[i][1])   )
+						   |  (((akiko_buffer[2] & akiko_precalc_shift[i])    != 0) << (akiko_precalc_bytenum[i][2])   )
+						   |  (((akiko_buffer[3] & akiko_precalc_shift[i])    != 0) << (akiko_precalc_bytenum[i][3])   )
+						   |  (((akiko_buffer[4] & akiko_precalc_shift[i])    != 0) << (akiko_precalc_bytenum[i][4])   )
+						   |  (((akiko_buffer[5] & akiko_precalc_shift[i])    != 0) << (akiko_precalc_bytenum[i][5])   )
+						   |  (((akiko_buffer[6] & akiko_precalc_shift[i])    != 0) << (akiko_precalc_bytenum[i][6])   )
+						   |  (((akiko_buffer[7] & akiko_precalc_shift[i])    != 0) << (akiko_precalc_bytenum[i][7])   )
 						   |  (((akiko_buffer[0] & akiko_precalc_shift[i+8])  != 0) << (akiko_precalc_bytenum[i+8][0]) )
-				    	   |  (((akiko_buffer[1] & akiko_precalc_shift[i+8])  != 0) << (akiko_precalc_bytenum[i+8][1]) )
-				    	   |  (((akiko_buffer[2] & akiko_precalc_shift[i+8])  != 0) << (akiko_precalc_bytenum[i+8][2]) )
-				    	   |  (((akiko_buffer[3] & akiko_precalc_shift[i+8])  != 0) << (akiko_precalc_bytenum[i+8][3]) )
-				    	   |  (((akiko_buffer[4] & akiko_precalc_shift[i+8])  != 0) << (akiko_precalc_bytenum[i+8][4]) )
-				    	   |  (((akiko_buffer[5] & akiko_precalc_shift[i+8])  != 0) << (akiko_precalc_bytenum[i+8][5]) )
-				    	   |  (((akiko_buffer[6] & akiko_precalc_shift[i+8])  != 0) << (akiko_precalc_bytenum[i+8][6]) )
-				    	   |  (((akiko_buffer[7] & akiko_precalc_shift[i+8])  != 0) << (akiko_precalc_bytenum[i+8][7]) )
+						   |  (((akiko_buffer[1] & akiko_precalc_shift[i+8])  != 0) << (akiko_precalc_bytenum[i+8][1]) )
+						   |  (((akiko_buffer[2] & akiko_precalc_shift[i+8])  != 0) << (akiko_precalc_bytenum[i+8][2]) )
+						   |  (((akiko_buffer[3] & akiko_precalc_shift[i+8])  != 0) << (akiko_precalc_bytenum[i+8][3]) )
+						   |  (((akiko_buffer[4] & akiko_precalc_shift[i+8])  != 0) << (akiko_precalc_bytenum[i+8][4]) )
+						   |  (((akiko_buffer[5] & akiko_precalc_shift[i+8])  != 0) << (akiko_precalc_bytenum[i+8][5]) )
+						   |  (((akiko_buffer[6] & akiko_precalc_shift[i+8])  != 0) << (akiko_precalc_bytenum[i+8][6]) )
+						   |  (((akiko_buffer[7] & akiko_precalc_shift[i+8])  != 0) << (akiko_precalc_bytenum[i+8][7]) )
 						   |  (((akiko_buffer[0] & akiko_precalc_shift[i+16]) != 0) << (akiko_precalc_bytenum[i+16][0]))
-				    	   |  (((akiko_buffer[1] & akiko_precalc_shift[i+16]) != 0) << (akiko_precalc_bytenum[i+16][1]))
-				    	   |  (((akiko_buffer[2] & akiko_precalc_shift[i+16]) != 0) << (akiko_precalc_bytenum[i+16][2]))
-				    	   |  (((akiko_buffer[3] & akiko_precalc_shift[i+16]) != 0) << (akiko_precalc_bytenum[i+16][3]))
-				    	   |  (((akiko_buffer[4] & akiko_precalc_shift[i+16]) != 0) << (akiko_precalc_bytenum[i+16][4]))
-				    	   |  (((akiko_buffer[5] & akiko_precalc_shift[i+16]) != 0) << (akiko_precalc_bytenum[i+16][5]))
-				    	   |  (((akiko_buffer[6] & akiko_precalc_shift[i+16]) != 0) << (akiko_precalc_bytenum[i+16][6]))
-				    	   |  (((akiko_buffer[7] & akiko_precalc_shift[i+16]) != 0) << (akiko_precalc_bytenum[i+16][7]))
+						   |  (((akiko_buffer[1] & akiko_precalc_shift[i+16]) != 0) << (akiko_precalc_bytenum[i+16][1]))
+						   |  (((akiko_buffer[2] & akiko_precalc_shift[i+16]) != 0) << (akiko_precalc_bytenum[i+16][2]))
+						   |  (((akiko_buffer[3] & akiko_precalc_shift[i+16]) != 0) << (akiko_precalc_bytenum[i+16][3]))
+						   |  (((akiko_buffer[4] & akiko_precalc_shift[i+16]) != 0) << (akiko_precalc_bytenum[i+16][4]))
+						   |  (((akiko_buffer[5] & akiko_precalc_shift[i+16]) != 0) << (akiko_precalc_bytenum[i+16][5]))
+						   |  (((akiko_buffer[6] & akiko_precalc_shift[i+16]) != 0) << (akiko_precalc_bytenum[i+16][6]))
+						   |  (((akiko_buffer[7] & akiko_precalc_shift[i+16]) != 0) << (akiko_precalc_bytenum[i+16][7]))
 						   |  (((akiko_buffer[0] & akiko_precalc_shift[i+24]) != 0) << (akiko_precalc_bytenum[i+24][0]))
-				    	   |  (((akiko_buffer[1] & akiko_precalc_shift[i+24]) != 0) << (akiko_precalc_bytenum[i+24][1]))
-				    	   |  (((akiko_buffer[2] & akiko_precalc_shift[i+24]) != 0) << (akiko_precalc_bytenum[i+24][2]))
-				    	   |  (((akiko_buffer[3] & akiko_precalc_shift[i+24]) != 0) << (akiko_precalc_bytenum[i+24][3]))
-				    	   |  (((akiko_buffer[4] & akiko_precalc_shift[i+24]) != 0) << (akiko_precalc_bytenum[i+24][4]))
-				    	   |  (((akiko_buffer[5] & akiko_precalc_shift[i+24]) != 0) << (akiko_precalc_bytenum[i+24][5]))
-				    	   |  (((akiko_buffer[6] & akiko_precalc_shift[i+24]) != 0) << (akiko_precalc_bytenum[i+24][6]))
-				    	   |  (((akiko_buffer[7] & akiko_precalc_shift[i+24]) != 0) << (akiko_precalc_bytenum[i+24][7]));
+						   |  (((akiko_buffer[1] & akiko_precalc_shift[i+24]) != 0) << (akiko_precalc_bytenum[i+24][1]))
+						   |  (((akiko_buffer[2] & akiko_precalc_shift[i+24]) != 0) << (akiko_precalc_bytenum[i+24][2]))
+						   |  (((akiko_buffer[3] & akiko_precalc_shift[i+24]) != 0) << (akiko_precalc_bytenum[i+24][3]))
+						   |  (((akiko_buffer[4] & akiko_precalc_shift[i+24]) != 0) << (akiko_precalc_bytenum[i+24][4]))
+						   |  (((akiko_buffer[5] & akiko_precalc_shift[i+24]) != 0) << (akiko_precalc_bytenum[i+24][5]))
+						   |  (((akiko_buffer[6] & akiko_precalc_shift[i+24]) != 0) << (akiko_precalc_bytenum[i+24][6]))
+						   |  (((akiko_buffer[7] & akiko_precalc_shift[i+24]) != 0) << (akiko_precalc_bytenum[i+24][7]));
 	}
 }
-#endif
 
 static void akiko_c2p_write(int offset, uae_u32 v)
 {
@@ -497,9 +468,9 @@ static volatile int frame2counter;
 
 static smp_comm_pipe requests;
 static volatile int akiko_thread_running;
-static uae_sem_t akiko_sem, sub_sem, cda_sem;
+static uae_sem_t akiko_sem = 0, sub_sem = 0, cda_sem = 0;
 
-static void checkint (void)
+static void checkint_akiko (void)
 {
 	if (cdrom_intreq & cdrom_intena) {
 		irq ();
@@ -522,13 +493,13 @@ static void set_status (uae_u32 status)
 	}
 #endif
 	cdrom_intreq |= status;
-	checkint ();
+	checkint_akiko ();
 	cdrom_led ^= LED_CD_ACTIVE2;
 }
 
 static void rethink_akiko(void)
 {
-	checkint ();
+	checkint_akiko ();
 }
 
 static void cdaudiostop_do (void)
@@ -554,14 +525,6 @@ static void subfunc (uae_u8 *data, int cnt)
 	if (!(cdrom_flags & CDFLAG_SUBCODE))
 		return;
 	uae_sem_wait (&sub_sem);
-#if 0
-	int total = 0;
-	for (int i = 0; i < MAX_SUBCODEBUFFER; i++) {
-		if (subcodebufferinuse[i])
-			total++;
-	}
-	write_log (_T("%d "), total);
-#endif
 	if (subcodebufferinuse[subcodebufferoffsetw]) {
 		memset (subcodebufferinuse, 0,sizeof (subcodebufferinuse));
 		subcodebufferoffsetw = subcodebufferoffset = 0;
@@ -742,8 +705,6 @@ static int cd_qcode (uae_u8 *d)
 			d[10] = tobcd ((uae_u8)(msf >> 0));
 		}
 	}
-//	write_log (_T("%02X.%02X.%02X.%02X.%02X.%02X.%02X.%02X.%02X.%02X.%02X.%02X\n"),
-//		d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7], d[8], d[9], d[10], d[11]);
 	return 0;
 }
 
@@ -1175,7 +1136,6 @@ static bool cdrom_add_command_byte(uae_u8 b)
 			write_log(_T(" checksum error"));
 #endif
 		cdrom_checksum_error = 1;
-		//activate_debugger ();
 	}
 #if AKIKO_DEBUG_IO_CMD
 	if (log_cd32 > 0)
@@ -1512,7 +1472,7 @@ static void AKIKO_hsync_handler (void)
 }
 
 /* cdrom data buffering thread */
-static void akiko_thread (void *null)
+static int akiko_thread (void *null)
 {
 	int secnum;
 	uae_u8 *tmp1;
@@ -1633,6 +1593,7 @@ static void akiko_thread (void *null)
 		sleep_millis (10);
 	}
 	akiko_thread_running = -1;
+	return 0;
 }
 
 STATIC_INLINE uae_u8 akiko_get_long (uae_u32 v, int offset)
@@ -2123,6 +2084,15 @@ static void akiko_free(void)
 {
 	akiko_thread_do(0);
 	akiko_cdrom_free();
+	if(akiko_sem != 0)
+	  uae_sem_destroy(&akiko_sem);
+	akiko_sem = 0;
+	if(sub_sem != 0)
+	  uae_sem_destroy(&sub_sem);
+	sub_sem = 0;
+	if(cda_sem != 0)
+	  uae_sem_destroy(&cda_sem);
+	cda_sem = 0;
 	mediacheckcounter = 0;
 	akiko_inited = false;
 }
@@ -2140,8 +2110,17 @@ int akiko_init(void)
 		sector_buffer_info_2 = xmalloc(uae_u8, SECTOR_BUFFER_SIZE);
 		sector_buffer_sector_1 = -1;
 		sector_buffer_sector_2 = -1;
+		if(akiko_sem != 0)
+			uae_sem_destroy(&akiko_sem);
+		akiko_sem = 0;
 		uae_sem_init(&akiko_sem, 0, 1);
+		if(sub_sem != 0)
+			uae_sem_destroy(&sub_sem);
+		sub_sem = 0;
 		uae_sem_init(&sub_sem, 0, 1);
+		if(cda_sem != 0)
+		  uae_sem_destroy(&cda_sem);
+		cda_sem= 0;
 		uae_sem_init(&cda_sem, 0, 0);
 		if (!savestate_state) {
 			cdrom_playing = cdrom_paused = 0;

@@ -255,29 +255,6 @@ USHORT DMS_Process_File(struct zfile *fi, struct zfile *fo, USHORT cmd, USHORT o
 					break;
 				}
 				break;
-#if 0
-				int ok = 0;
-				while (!ok) {
-					uae_u8 b1[THLEN];
-
-					if (zfile_fread(b1,1,THLEN,fi) != 1) {
-						write_log (_T("DMS: unexpected end of file\n"));
-						break;
-					}
-					write_log (_T("DMS: corrupted track, searching for next track header..\n"));
-					if (b1[0] == 'T' && b1[1] == 'R') {
-						USHORT hcrc = (USHORT)((b1[THLEN-2] << 8) | b1[THLEN-1]);
-						if (CreateCRC(b1,(ULONG)(THLEN-2)) == hcrc) {
-							write_log (_T("DMS: found checksum correct track header, retrying..\n"));
-							zfile_fseek (fi, SEEK_CUR, -THLEN);
-							ok = 1;
-							break;
-						}
-					}
-					if (!ok)
-						zfile_fseek (fi, SEEK_CUR, -(THLEN - 1));
-				}
-#endif
 			}
 		}
 	}

@@ -532,4 +532,68 @@ void driveclick_check_prefs (void)
 	}
 }
 
+int driveclick_loadresource(struct drvsample* sp, int drivetype)
+{
+	auto ok = 1;
+	TCHAR sample[MAX_DPATH];
+	for (auto type = 0; type < DS_END; type++) {
+		auto* s = sp + type;
+		switch (type) {
+		case 0:
+			get_floppy_sounds_path(sample, MAX_DPATH);
+			_tcscat(sample, "drive_click.wav");
+			break;
+		case 1:
+			get_floppy_sounds_path(sample, MAX_DPATH);
+			_tcscat(sample, "drive_spin.wav");
+			break;
+		case 2:
+			get_floppy_sounds_path(sample, MAX_DPATH);
+			_tcscat(sample, "drive_spinnd.wav");
+			break;
+		case 3:
+			get_floppy_sounds_path(sample, MAX_DPATH);
+			_tcscat(sample, "drive_startup.wav");
+			break;
+		case 4:
+			get_floppy_sounds_path(sample, MAX_DPATH);
+			_tcscat(sample, "drive_snatch.wav");
+			break;
+		default:
+			continue;
+		}
+		ok = loadsample(sample, s);
+	}
+	return ok;
+}
+
+void driveclick_fdrawcmd_close(int drive)
+{
+
+}
+
+int driveclick_fdrawcmd_open(int drive)
+{
+	return 0;
+}
+
+void driveclick_fdrawcmd_detect(void)
+{
+
+}
+
+void driveclick_fdrawcmd_seek(int drive, int cyl)
+{
+
+}
+
+void driveclick_fdrawcmd_motor(int drive, int running)
+{
+
+}
+
+void driveclick_fdrawcmd_vsync(void)
+{
+
+}
 #endif

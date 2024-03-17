@@ -13,7 +13,11 @@
 #include "readcpu.h"
 #include "machdep/m68k.h"
 #include "events.h"
+#include "thread.h"
+
+#ifdef WITH_SOFTFLOAT
 #include <softfloat/softfloat.h>
+#endif
 
 #ifndef SET_CFLG
 
@@ -148,8 +152,8 @@ struct cache040
 
 struct mmufixup
 {
-    int reg;
-    uae_u32 value;
+	int reg;
+	uae_u32 value;
 };
 extern struct mmufixup mmufixup[2];
 
@@ -163,7 +167,9 @@ typedef struct {
 
 typedef struct
 {
+#ifdef WITH_SOFTFLOAT
 	floatx80 fpx;
+#endif
 #ifdef MSVC_LONG_DOUBLE
 	union {
 		fptype fp;
@@ -173,6 +179,13 @@ typedef struct
 	fptype fp;
 #endif
 } fpdata;
+
+#ifdef CPU_AARCH64
+#ifdef JIT
+#include "jit/comptbl.h"
+#include "jit/compemu.h"
+#endif
+#endif
 
 struct regstruct
 {
@@ -268,6 +281,20 @@ struct regstruct
 	int ce020_tail;
 	evt_t ce020_tail_cycles;
 	int memory_waitstate_cycles;
+
+#ifdef CPU_AARCH64 // Used by the AARCH64 JIT implementation
+#ifdef JIT
+	/* store scratch regs also in this struct to avoid load of mem pointer */
+	uae_u32 scratchregs[VREGS - S1];
+	fpu_register scratchfregs[VFREGS - 8];
+	uae_u32 jit_exception;
+
+	/* pointer to real arrays/structs for easier access in JIT */
+	uae_u32* raw_cputbl_count;
+	uintptr mem_banks;
+	uintptr cache_tags;
+#endif
+#endif
 };
 
 extern struct regstruct regs;

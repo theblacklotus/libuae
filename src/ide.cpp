@@ -976,7 +976,6 @@ static void do_process_rw_command (struct ide_hdf *ide)
 	unsigned int cyl, head, sec, nsec, nsec_total;
 	uae_u64 lba;
 	bool last = true;
-	uae_u32 error = 0;
 
 	ide->data_offset = 0;
 
@@ -1017,14 +1016,9 @@ static void do_process_rw_command (struct ide_hdf *ide)
 			write_log (_T("IDE%d write, %d/%d bytes, buffer offset %d\n"), ide->num, nsec * ide->blocksize, nsec_total * ide->blocksize, ide->buffer_offset);
 	} else {
 		if (ide->buffer_offset == 0) {
-			hdf_read(&ide->hdhfd.hfd, ide->secbuf, ide->start_lba * ide->blocksize, ide->start_nsec * ide->blocksize, &error);
+			hdf_read(&ide->hdhfd.hfd, ide->secbuf, ide->start_lba * ide->blocksize, ide->start_nsec * ide->blocksize);
 			if (IDE_LOG > 1)
 				write_log(_T("IDE%d initial read, %d bytes\n"), ide->num, nsec_total * ide->blocksize);
-			if (error) {
-				ide_data_ready(ide);
-				ide_fail_err(ide, IDE_ERR_IDNF);
-				return;
-			}
 		}
 		if (IDE_LOG > 1)
 			write_log (_T("IDE%d read, read %d/%d bytes, buffer offset=%d\n"), ide->num, nsec * ide->blocksize, nsec_total * ide->blocksize, ide->buffer_offset);
@@ -1039,12 +1033,7 @@ static void do_process_rw_command (struct ide_hdf *ide)
 		if (IDE_LOG > 1)
 			write_log(_T("IDE%d write finished, %d bytes\n"), ide->num, ide->start_nsec * ide->blocksize);
 		ide->intdrq = false;
-		hdf_write(&ide->hdhfd.hfd, ide->secbuf, ide->start_lba * ide->blocksize, ide->start_nsec * ide->blocksize, &error);
-		if (error) {
-			ide_data_ready(ide);
-			ide_fail_err(ide, IDE_ERR_IDNF);
-			return;
-		}
+		hdf_write(&ide->hdhfd.hfd, ide->secbuf, ide->start_lba * ide->blocksize, ide->start_nsec * ide->blocksize);
 	}
 
 end:
@@ -1569,7 +1558,7 @@ void ide_write_reg (struct ide_hdf *ide, int ide_reg, uae_u32 val)
 	}
 }
 
-static void ide_thread (void *idedata)
+static int ide_thread (void *idedata)
 {
 	struct ide_thread_state *its = (struct ide_thread_state*)idedata;
 	for (;;) {
@@ -1584,6 +1573,7 @@ static void ide_thread (void *idedata)
 			do_process_rw_command (ide);
 	}
 	its->state = -1;
+	return 0;
 }
 
 void start_ide_thread(struct ide_thread_state *its)
@@ -1602,6 +1592,7 @@ void stop_ide_thread(struct ide_thread_state *its)
 		write_comm_pipe_u32 (&its->requests, 0xffffffff, 1);
 		while(its->state == 0)
 			sleep_millis (10);
+		destroy_comm_pipe(&its->requests);
 		its->state = 0;
 	}
 }

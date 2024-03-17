@@ -46,13 +46,19 @@
 #include "audio.h"
 #include "fpp.h"
 #include "statusline.h"
+#ifdef WITH_PPC
 #include "uae/ppc.h"
+#endif
 #include "cpuboard.h"
 #include "threaddep/thread.h"
+#ifdef WITH_X86
 #include "x86.h"
+#endif
 #include "bsdsocket.h"
 #include "devices.h"
+#ifdef WITH_DRACO
 #include "draco.h"
+#endif
 #ifdef JIT
 #include "jit/compemu.h"
 #include <signal.h>
@@ -1822,7 +1828,7 @@ static uae_u32 opcode_swap(uae_u16 opcode)
 {
 	if (!need_opcode_swap)
 		return opcode;
-	return do_byteswap_16(opcode);
+	return uae_bswap_16(opcode);
 }
 
 uae_u32 REGPARAM2 op_illg_1(uae_u32 opcode)
@@ -2021,7 +2027,7 @@ static void build_cpufunctbl (void)
 		cpuop_func **tmp = xmalloc(cpuop_func*, 65536);
 		memcpy(tmp, cpufunctbl, sizeof(cpuop_func*) * 65536);
 		for (int i = 0; i < 65536; i++) {
-			int offset = do_byteswap_16(i);
+			int offset = uae_bswap_16(i);
 			cpufunctbl[offset] = tmp[i];
 		}
 		xfree(tmp);
@@ -2776,8 +2782,10 @@ static void Exception_ce000 (int nr)
 			cpu_halt (CPU_HALT_DOUBLE_FAULT);
 			return;
 		}
+#ifdef DEBUGGER
 		write_log(_T("Exception %d (%08x %x) at %x -> %x!\n"),
 			nr, last_op_for_exception_3, last_addr_for_exception_3, currpc, get_long_debug(4 * nr));
+#endif
 		if (currprefs.cpu_model == 68000) {
 			// 68000 bus/address error
 			uae_u16 mode = (sv ? 4 : 0) | last_fc_for_exception_3;
@@ -3029,7 +3037,9 @@ static void Exception_mmu (int nr, uaecptr oldpc)
 			Exception_build_stack_frame(regs.mmu_fault_addr, currpc, regs.mmu_fslw, vector_nr, 0x4);
 	} else if (nr == 3) { // address error
         Exception_build_stack_frame(last_fault_for_exception_3, currpc, 0, vector_nr, 0x2);
+#ifdef DEBUGGER
 		write_log (_T("Exception %d (%x) at %x -> %x!\n"), nr, last_fault_for_exception_3, currpc, get_long_debug (regs.vbr + 4 * nr));
+#endif
 	} else if (regs.m && interrupt) { /* M + Interrupt */
 		Exception_build_stack_frame(oldpc, currpc, regs.mmu_ssw, vector_nr, 0x0);
 		MakeSR();
@@ -3292,7 +3302,9 @@ static void Exception_normal (int nr)
 				Exception_build_stack_frame(oldpc, currpc, ssw, vector_nr, 0x08);
 				used_exception_build_stack_frame = true;
 			}
+#ifdef DEBUGGER
 			write_log (_T("Exception %d (%x) at %x -> %x!\n"), nr, regs.instruction_pc, currpc, get_long_debug (regs.vbr + 4 * vector_nr));
+#endif
 		} else if (regs.m && interrupt) { /* M + Interrupt */
 			m68k_areg (regs, 7) -= 2;
 			x_put_word (m68k_areg (regs, 7), vector_nr * 4);
@@ -3321,7 +3333,9 @@ static void Exception_normal (int nr)
 			mode |= last_notinstruction_for_exception_3 ? 8 : 0;
 			exception_in_exception = -1;
 			Exception_build_68000_address_error_stack_frame(mode, last_op_for_exception_3, last_fault_for_exception_3, last_addr_for_exception_3);
+#ifdef DEBUGGER
 			write_log (_T("Exception %d (%x) at %x -> %x!\n"), nr, last_fault_for_exception_3, currpc, get_long_debug (regs.vbr + 4 * vector_nr));
+#endif
 			goto kludge_me_do;
 		}
 	}
@@ -3734,13 +3748,17 @@ static void cpu_do_fallback(void)
 		memcpy(&regs, &fallback_regs, sizeof(regs));
 		restore_banks();
 		memory_restore();
+#ifdef DEBUGGER
 		memory_map_dump();
+#endif
 		m68k_setpc(fallback_regs.pc);
 	} else {
 		// 68000/010/EC020
 		memory_restore();
 		expansion_cpu_fallback();
+#ifdef DEBUGGER
 		memory_map_dump();
+#endif
 	}
 }
 
@@ -3833,7 +3851,9 @@ uae_u32 REGPARAM2 op_illg (uae_u32 opcode)
 			Exception(8);
 		} else {
 			if (warned < 20) {
+#ifdef DEBUGGER
 				write_log(_T("B-Trap %04X at %08X -> %08X\n"), opcode, pc, get_long_debug(regs.vbr + 0x2c));
+#endif
 				warned++;
 			}
 			Exception(0xB);
@@ -3843,7 +3863,9 @@ uae_u32 REGPARAM2 op_illg (uae_u32 opcode)
 	}
 	if ((opcode & 0xF000) == 0xA000) {
 		if (warned < 20) {
+#ifdef DEBUGGER
 			write_log(_T("A-Trap %04X at %08X -> %08X\n"), opcode, pc, get_long_debug(regs.vbr + 0x28));
+#endif
 			warned++;
 		}
 		Exception (0xA);
@@ -3851,7 +3873,9 @@ uae_u32 REGPARAM2 op_illg (uae_u32 opcode)
 		return 4;
 	}
 	if (warned < 20) {
+#ifdef DEBUGGER
 		write_log (_T("Illegal instruction: %04x at %08X -> %08X\n"), opcode, pc, get_long_debug(regs.vbr + 0x10));
+#endif
 		warned++;
 		//activate_debugger_new();
 	}
@@ -4222,13 +4246,17 @@ static void int_request_do(bool i6)
 {
 	if (i6) {
 		if (currprefs.cs_compatible == CP_DRACO || currprefs.cs_compatible == CP_CASABLANCA) {
+#ifdef WITH_DRACO
 			draco_ext_interrupt(true);
+#endif
 		} else {
 			INTREQ_f(0x8000 | 0x2000);
 		}
 	} else {
 		if (currprefs.cs_compatible == CP_DRACO || currprefs.cs_compatible == CP_CASABLANCA) {
+#ifdef WITH_DRACO
 			draco_ext_interrupt(false);
+#endif
 		} else {
 			INTREQ_f(0x8000 | 0x0008);
 		}
@@ -4294,7 +4322,9 @@ void safe_interrupt_set(int num, int id, bool i6)
 		atomic_or(&uae_interrupt, 1);
 	} else {
 		if (currprefs.cs_compatible == CP_DRACO || currprefs.cs_compatible == CP_CASABLANCA) {
+#ifdef WITH_DRACO
 			draco_ext_interrupt(i6);
+#endif
 		} else {
 			int inum = i6 ? 13 : 3;
 			uae_u16 v = 1 << inum;
@@ -4315,7 +4345,7 @@ int cpu_sleep_millis(int ms)
 	if (state)
 		uae_ppc_spinlock_release();
 #endif
-#ifdef WITH_X86
+#if defined (WITH_X86) || defined (AMIBERRY)
 //	if (x86_turbo_on) {
 //		execute_other_cpu(read_processor_time() + vsynctimebase / 20);
 //	} else {
@@ -5154,7 +5184,8 @@ static volatile uae_u32 cpu_thread_indirect_addr;
 static volatile uae_u32 cpu_thread_indirect_val;
 static volatile uae_u32 cpu_thread_indirect_size;
 static volatile uae_u32 cpu_thread_reset;
-static uae_thread_id cpu_thread_tid;
+static SDL_Thread* cpu_thread;
+static SDL_threadID cpu_thread_tid;
 
 static bool m68k_cs_initialized;
 
@@ -5215,8 +5246,8 @@ extern addrbank *thread_mem_banks[MEMORY_BANKS];
 
 uae_u32 process_cpu_indirect_memory_read(uae_u32 addr, int size)
 {
-	// Do direct access if call is from filesystem etc thread 
-	if (cpu_thread_tid != uae_thread_get_id()) {
+	// Do direct access if call is from filesystem etc thread
+	if (cpu_thread_tid != uae_thread_get_id(nullptr)) {
 		uae_u32 data = 0;
 		addrbank *ab = thread_mem_banks[bankindex(addr)];
 		switch (size)
@@ -5245,7 +5276,7 @@ uae_u32 process_cpu_indirect_memory_read(uae_u32 addr, int size)
 
 void process_cpu_indirect_memory_write(uae_u32 addr, uae_u32 data, int size)
 {
-	if (cpu_thread_tid != uae_thread_get_id()) {
+	if (cpu_thread_tid != uae_thread_get_id(nullptr)) {
 		addrbank *ab = thread_mem_banks[bankindex(addr)];
 		switch (size)
 		{
@@ -5270,9 +5301,9 @@ void process_cpu_indirect_memory_write(uae_u32 addr, uae_u32 data, int size)
 	cpu_thread_indirect_mode = 0xff;
 }
 
-static void run_cpu_thread(void (*f)(void *))
+static void run_cpu_thread(int (*f)(void *))
 {
-	int framecnt = -1;
+	uae_u32 framecnt = -1;
 	int vp = 0;
 	int intlev_prev = 0;
 
@@ -5281,7 +5312,7 @@ static void run_cpu_thread(void (*f)(void *))
 	uae_sem_init(&cpu_out_sema, 0, 0);
 	uae_sem_init(&cpu_wakeup_sema, 0, 0);
 
-	if (!uae_start_thread(_T("cpu"), f, NULL, NULL))
+	if (!uae_start_thread(_T("cpu"), f, NULL, &cpu_thread))
 		return;
 	while (!cpu_thread_active) {
 		sleep_millis(1);
@@ -5412,7 +5443,7 @@ static void run_cpu_thread(void (*f)(void *))
 void custom_reset_cpu(bool hardreset, bool keyboardreset)
 {
 #ifdef WITH_THREADED_CPU
-	if (cpu_thread_tid != uae_thread_get_id()) {
+	if (cpu_thread_tid != uae_thread_get_id(nullptr)) {
 		custom_reset(hardreset, keyboardreset);
 		return;
 	}
@@ -5425,6 +5456,18 @@ void custom_reset_cpu(bool hardreset, bool keyboardreset)
 }
 
 #ifdef JIT  /* Completely different run_2 replacement */
+
+#ifdef CPU_AARCH64 // Used by the AARCH64 JIT implementation
+void execute_exception(uae_u32 cycles)
+{
+	countdown -= cycles;
+	Exception_cpu(regs.jit_exception);
+	regs.jit_exception = 0;
+	cpu_cycles = adjust_cycles(4 * CYCLE_UNIT / 2);
+	do_cycles(cpu_cycles);
+	// after leaving this function, we fall back to execute_normal()
+}
+#endif
 
 void do_nothing (void)
 {
@@ -5441,7 +5484,7 @@ static uae_u32 get_jit_opcode(void)
 	if (currprefs.cpu_compatible) {
 		opcode = get_word_020_prefetchf(m68k_getpc());
 #ifdef HAVE_GET_WORD_UNSWAPPED
-		opcode = do_byteswap_16(opcode);
+		opcode = uae_bswap_16(opcode);
 #endif
 	} else {
 #ifdef HAVE_GET_WORD_UNSWAPPED
@@ -5529,9 +5572,9 @@ void execute_normal(void)
 typedef void compiled_handler (void);
 
 #ifdef WITH_THREADED_CPU
-static void cpu_thread_run_jit(void *v)
+static int cpu_thread_run_jit(void *v)
 {
-	cpu_thread_tid = uae_thread_get_id();
+	cpu_thread_tid = uae_thread_get_id(cpu_thread);
 	cpu_thread_active = 1;
 #ifdef USE_STRUCTURED_EXCEPTION_HANDLING
 	__try
@@ -5558,6 +5601,7 @@ static void cpu_thread_run_jit(void *v)
 	}
 #endif
 	cpu_thread_active = 0;
+	return 0;
 }
 #endif
 
@@ -5717,7 +5761,11 @@ static void m68k_run_mmu060 (void)
 		check_debugger();
 		TRY (prb) {
 			for (;;) {
+#if defined(CPU_i386) || defined(CPU_x86_64)
 				f.cznv = regflags.cznv;
+#else // we assume CPU_arm or CPU_AARCH64 here
+				f.nzcv = regflags.nzcv;
+#endif
 				f.x = regflags.x;
 				regs.instruction_pc = m68k_getpc ();
 
@@ -5743,7 +5791,11 @@ static void m68k_run_mmu060 (void)
 			}
 		} CATCH (prb) {
 			m68k_setpci (regs.instruction_pc);
-			regflags.cznv = f.cznv;
+#if defined(CPU_i386) || defined(CPU_x86_64)
+				regflags.cznv = f.cznv;
+#else // we assume CPU_arm or CPU_AARCH64 here
+				regflags.nzcv = f.nzcv;
+#endif
 			regflags.x = f.x;
 			cpu_restore_fixup();
 			TRY (prb2) {
@@ -5771,7 +5823,11 @@ static void m68k_run_mmu040 (void)
 		check_debugger();
 		TRY (prb) {
 			for (;;) {
+#if defined(CPU_i386) || defined(CPU_x86_64)
 				f.cznv = regflags.cznv;
+#else // we assume CPU_arm or CPU_AARCH64 here
+				f.nzcv = regflags.nzcv;
+#endif
 				f.x = regflags.x;
 				mmu_restart = true;
 				regs.instruction_pc = m68k_getpc ();
@@ -5796,7 +5852,11 @@ static void m68k_run_mmu040 (void)
 
 			if (mmu_restart) {
 				/* restore state if instruction restart */
+#if defined(CPU_i386) || defined(CPU_x86_64)
 				regflags.cznv = f.cznv;
+#else // we assume CPU_arm or CPU_AARCH64 here
+				regflags.nzcv = f.nzcv;
+#endif
 				regflags.x = f.x;
 				m68k_setpci (regs.instruction_pc);
 			}
@@ -5831,7 +5891,11 @@ static void m68k_run_mmu030 (void)
 				int cnt;
 insretry:
 				regs.instruction_pc = m68k_getpc ();
+#if defined(CPU_i386) || defined(CPU_x86_64)
 				f.cznv = regflags.cznv;
+#else // we assume CPU_arm or CPU_AARCH64 here
+				f.nzcv = regflags.nzcv;
+#endif
 				f.x = regflags.x;
 
 				mmu030_state[0] = mmu030_state[1] = mmu030_state[2] = 0;
@@ -5934,7 +5998,11 @@ insretry:
 				mmufixup[0].reg = -1;
 				mmufixup[1].reg = -1;
 			} else {
+#if defined(CPU_i386) || defined(CPU_x86_64)
 				regflags.cznv = f.cznv;
+#else // we assume CPU_arm or CPU_AARCH64 here
+				regflags.nzcv = f.nzcv;
+#endif
 				regflags.x = f.x;
 				cpu_restore_fixup();
 			}
@@ -6339,12 +6407,12 @@ cont:
 #endif
 
 #ifdef WITH_THREADED_CPU
-static void cpu_thread_run_2(void *v)
+static int cpu_thread_run_2(void *v)
 {
 	bool exit = false;
 	struct regstruct *r = &regs;
 
-	cpu_thread_tid = uae_thread_get_id();
+	cpu_thread_tid = uae_thread_get_id(cpu_thread);
 
 	cpu_thread_active = 1;
 	while (!exit) {
@@ -6373,6 +6441,7 @@ static void cpu_thread_run_2(void *v)
 		} ENDTRY
 	}
 	cpu_thread_active = 0;
+	return 0;
 }
 #endif
 
@@ -6601,7 +6670,9 @@ void m68k_go (int may_quit)
 			/* We may have been restoring state, but we're done now.  */
 			if (isrestore ()) {
 				restored = savestate_restore_finish ();
+#ifdef DEBUGGER
 				memory_map_dump ();
+#endif
 				if (currprefs.mmu_model == 68030) {
 					mmu030_decode_tc (tc_030, true);
 				} else if (currprefs.mmu_model >= 68040) {
@@ -7872,7 +7943,7 @@ void exception2_fetch(uae_u32 opcode, int offset, int pcoffset)
 
 bool cpureset (void)
 {
-    /* RESET hasn't increased PC yet, 1 word offset */
+	/* RESET hasn't increased PC yet, 1 word offset */
 	uaecptr pc;
 	uaecptr ksboot = 0xf80002 - 2;
 	uae_u16 ins;

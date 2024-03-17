@@ -13,7 +13,7 @@ struct uae_shmid_ds {
 	uae_u32 size;
 	uae_u32 rosize;
 	void *addr;
-	TCHAR name[MAX_PATH];
+	TCHAR name[MAX_DPATH];
 	void *attached;
 	int mode;
 	void *natmembase;

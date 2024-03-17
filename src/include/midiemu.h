@@ -1,3 +1,6 @@
+#pragma once
+
+#include "uae/types.h"
 
 extern int midi_emu;
 extern void midi_emu_close(void);

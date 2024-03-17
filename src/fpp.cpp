@@ -3722,7 +3722,9 @@ void fpu_reset (void)
 	fpp_set_fpcr (0);
 	fpp_set_fpsr (0);
 	fpp_set_fpiar (0);
+#ifndef AMIBERRY
 	fpux_restore (NULL);
+#endif
 	// reset precision
 	fpp_set_mode(0x00000080 | 0x00000010);
 	fpp_set_mode(0x00000000);

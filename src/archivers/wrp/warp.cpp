@@ -468,8 +468,8 @@ struct zfile *unwarp(struct zfile *zf)
 		} else {
 			uae_u16 crc2;
 			int os = zfile_ftell32(tmpf);
-			data = zfile_getdata(tmpf, 0, os, NULL);
-			crc2 = wrpcrc16(wrpcrc16table, data, os);
+			data = zfile_getdata (tmpf, 0, os, NULL);
+			crc2 = wrpcrc16 (wrpcrc16table, data, os);
 			if (crc != crc2)
 				write_log (_T("WRP crc error %04x<>%04x, track=%d,side=%d\n"), crc, crc2, track, side);
 			xfree (data);

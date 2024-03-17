@@ -18,7 +18,7 @@
 #include "uae.h"
 #include "memory.h"
 #include "rommgr.h"
-#include "ersatz.h"
+//#include "ersatz.h"
 #include "zfile.h"
 #include "custom.h"
 #include "events.h"
@@ -30,18 +30,26 @@
 #include "gui.h"
 #include "cdtv.h"
 #include "akiko.h"
+#ifdef ARCADIA
 #include "arcadia.h"
+#endif
+#ifdef ENFORCER
 #include "enforcer.h"
+#endif
 #include "threaddep/thread.h"
 #include "gayle.h"
 #include "debug.h"
 #include "debugmem.h"
 #include "gfxboard.h"
 #include "cpuboard.h"
+#ifdef WITH_PPC
 #include "uae/ppc.h"
+#endif
 #include "devices.h"
 #include "inputdevice.h"
+#ifdef WITH_DRACO
 #include "draco.h"
+#endif
 
 bool canbang;
 uaecptr highest_ram;
@@ -1303,7 +1311,9 @@ uae_u8 *REGPARAM2 default_xlate (uaecptr addr)
 					}
 					write_log (_T("\n"));
 				}
+#ifdef DEBUGGER
 				memory_map_dump();
+#endif
 			}
 			if (0 || (gary_toenb && (gary_nonrange(addr) || (size > 1 && gary_nonrange(addr + size - 1))))) {
 				hardware_exception2(addr, 0, true, true, size);
@@ -1673,10 +1683,12 @@ static bool load_extendedkickstart (const TCHAR *romextfile, int type)
 
 	if (romextfile[0] == '\0')
 		return false;
+#ifdef ARCADIA
 	if (is_arcadia_rom (romextfile) == ARCADIA_BIOS) {
 		extendedkickmem_type = EXTENDED_ROM_ARCADIA;
 		return false;
 	}
+#endif
 	f = read_rom_name (romextfile, false);
 	if (!f) {
 		notify_user (NUMSG_NOEXTROM);
@@ -1685,11 +1697,13 @@ static bool load_extendedkickstart (const TCHAR *romextfile, int type)
 	zfile_fseek (f, 0, SEEK_END);
 	size = zfile_ftell32(f);
 	extendedkickmem_bank.reserved_size = ROM_SIZE_512;
+#ifdef ARCADIA
 	struct romdata *rd = get_alg_rom(romextfile);
 	if (rd) {
 		size = rd->size;
 		type = EXTENDED_ROM_ALG;
 	}
+#endif
 	off = 0;
 	if (type == 0) {
 		if (currprefs.cs_cd32cd) {
@@ -1743,19 +1757,40 @@ static bool load_extendedkickstart (const TCHAR *romextfile, int type)
 	return ret;
 }
 
+#ifdef AMIBERRY
 
+#else
 extern unsigned char arosrom[];
 extern unsigned int arosrom_len;
+#endif
 extern int seriallog;
 static bool load_kickstart_replacement(void)
 {
-	struct zfile *f;
+#ifdef AMIBERRY
+	int arosrom_len;
+	char path[MAX_DPATH];
+	get_rom_path(path, MAX_DPATH);
+	strcat(path, "aros-ext.bin");
+	auto* arosrom = zfile_load_file(path, &arosrom_len);
+	if (arosrom == nullptr)
+	{
+		gui_message("Could not find the 'aros-ext.bin' file in the Kickstarts directory!");
+		return false;
+	}
+	struct zfile* f = zfile_fopen_data(path, arosrom_len, arosrom);
+	if (!f)
+	{
+		xfree(arosrom);
+		return false;
+	}
+#else
 	f = zfile_fopen_data(_T("aros.gz"), arosrom_len, arosrom);
 	if (!f)
 		return false;
 	f = zfile_gunzip(f);
 	if (!f)
 		return false;
+#endif
 
 	extendedkickmem_bank.reserved_size = ROM_SIZE_512;
 	extendedkickmem_bank.mask = ROM_SIZE_512 - 1;
@@ -1764,12 +1799,31 @@ static bool load_kickstart_replacement(void)
 	mapped_malloc(&extendedkickmem_bank);
 	read_kickstart(f, extendedkickmem_bank.baseaddr, ROM_SIZE_512, 0, 1);
 
-
+#ifdef AMIBERRY
+	zfile_fclose(f);
+	xfree(arosrom);
+	get_rom_path(path, MAX_DPATH);
+	strcat(path, "aros-rom.bin");
+	arosrom = zfile_load_file(path, &arosrom_len);
+	if (arosrom == nullptr)
+	{
+		gui_message("Could not find the 'aros-rom.bin' file in the Kickstarts directory!");
+		return false;
+	}
+	f = zfile_fopen_data(path, arosrom_len, arosrom);
+	if (!f)
+	{
+		xfree(arosrom);
+		return false;
+	}
+#endif
+	
 	kickmem_bank.reserved_size = ROM_SIZE_512;
 	kickmem_bank.mask = ROM_SIZE_512 - 1;
 	read_kickstart(f, kickmem_bank.baseaddr, ROM_SIZE_512, 1, 0);
 
 	zfile_fclose(f);
+	xfree(arosrom);
 
 	seriallog = -1;
 
@@ -1878,19 +1932,19 @@ static struct zfile *get_kickstart_filehandle(struct uae_prefs *p)
 	_tcscpy(tmprom, p->romfile);
 	_tcscpy(tmprom2, p->romfile);
 	if (f == NULL) {
-		_stprintf(tmprom2, _T("%s%s"), start_path_data, p->romfile);
+		_stprintf(tmprom2, _T("%s%s"), start_path_data.c_str(), p->romfile);
 		f = rom_fopen(tmprom2, _T("rb"), ZFD_NORMAL);
 		if (f == NULL) {
-			_stprintf(tmprom2, _T("%sroms/kick.rom"), start_path_data);
+			_stprintf(tmprom2, _T("%sroms/kick.rom"), start_path_data.c_str());
 			f = rom_fopen(tmprom2, _T("rb"), ZFD_NORMAL);
 			if (f == NULL) {
-				_stprintf(tmprom2, _T("%skick.rom"), start_path_data);
+				_stprintf(tmprom2, _T("%skick.rom"), start_path_data.c_str());
 				f = rom_fopen(tmprom2, _T("rb"), ZFD_NORMAL);
 				if (f == NULL) {
-					_stprintf(tmprom2, _T("%s../shared/rom/kick.rom"), start_path_data);
+					_stprintf(tmprom2, _T("%s../shared/rom/kick.rom"), start_path_data.c_str());
 					f = rom_fopen(tmprom2, _T("rb"), ZFD_NORMAL);
 					if (f == NULL) {
-						_stprintf(tmprom2, _T("%s../System/rom/kick.rom"), start_path_data);
+						_stprintf(tmprom2, _T("%s../System/rom/kick.rom"), start_path_data.c_str());
 						f = rom_fopen(tmprom2, _T("rb"), ZFD_NORMAL);
 						if (f == NULL) {
 							f = read_rom_name_guess(tmprom, tmprom2);
@@ -1906,7 +1960,7 @@ static struct zfile *get_kickstart_filehandle(struct uae_prefs *p)
 	return f;
 }
 
-extern struct zfile *read_executable_rom(struct zfile*, int size, int blocks);
+//extern struct zfile *read_executable_rom(struct zfile*, int size, int blocks);
 static const uae_u8 romend[20] = {
 	0x00, 0x08, 0x00, 0x00,
 	0x00, 0x18, 0x00, 0x19, 0x00, 0x1a, 0x00, 0x1b, 0x00, 0x1c, 0x00, 0x1d, 0x00, 0x1e, 0x00, 0x1f
@@ -1936,34 +1990,34 @@ static int load_kickstart (void)
 
 		maxsize = ROM_SIZE_512;
 
-		if ((tmp[0] == 0x00 && tmp[1] == 0x00 && tmp[2] == 0x03 && tmp[3] == 0xf3 &&
-			tmp[4] == 0x00 && tmp[5] == 0x00 && tmp[6] == 0x00 && tmp[7] == 0x00) ||
-			(tmp[0] == 0x7f && tmp[1] == 'E' && tmp[2] == 'L' && tmp[3] == 'F')) {
-			struct zfile *zf = read_executable_rom(f, ROM_SIZE_512, 3);
-			if (zf) {
-				int size = zfile_size32(zf);
-				zfile_fclose(f);
-				f = zf;
-				if (size > ROM_SIZE_512) {
-					maxsize = zfile_size32(zf);
-					singlebigrom = true;
-					extendedkickmem2a_bank.reserved_size = 524288;
-					extendedkickmem2a_bank.mask = extendedkickmem2a_bank.allocated_size - 1;
-					extendedkickmem2a_bank.start = size > 2 * ROM_SIZE_512 ? 0xa00000 : 0xa80000;
-					mapped_malloc(&extendedkickmem2a_bank);
-					extendedkickmem2b_bank.reserved_size = 524288;
-					extendedkickmem2b_bank.mask = extendedkickmem2a_bank.allocated_size - 1;
-					extendedkickmem2a_bank.start = extendedkickmem2a_bank.start + 524288;
-					mapped_malloc(&extendedkickmem2a_bank);
-					read_kickstart(f, extendedkickmem2a_bank.baseaddr, 524288, 0, 1);
-					read_kickstart(f, extendedkickmem2b_bank.baseaddr, 524288, 0, 1);
-					memset(kickmem_bank.baseaddr, 0, ROM_SIZE_512);
-					memcpy(kickmem_bank.baseaddr, extendedkickmem2a_bank.baseaddr, 0xd0);
-					memcpy(kickmem_bank.baseaddr + ROM_SIZE_512 - 20, romend, sizeof(romend));
-					kickstart_fix_checksum(kickmem_bank.baseaddr, ROM_SIZE_512);
-				}
-			}
-		}
+		//if ((tmp[0] == 0x00 && tmp[1] == 0x00 && tmp[2] == 0x03 && tmp[3] == 0xf3 &&
+		//	tmp[4] == 0x00 && tmp[5] == 0x00 && tmp[6] == 0x00 && tmp[7] == 0x00) ||
+		//	(tmp[0] == 0x7f && tmp[1] == 'E' && tmp[2] == 'L' && tmp[3] == 'F')) {
+		//	struct zfile *zf = read_executable_rom(f, ROM_SIZE_512, 3);
+		//	if (zf) {
+		//		int size = zfile_size(zf);
+		//		zfile_fclose(f);
+		//		f = zf;
+		//		if (size > ROM_SIZE_512) {
+		//			maxsize = zfile_size(zf);
+		//			singlebigrom = true;
+		//			extendedkickmem2a_bank.reserved_size = 524288;
+		//			extendedkickmem2a_bank.mask = extendedkickmem2a_bank.allocated_size - 1;
+		//			extendedkickmem2a_bank.start = size > 2 * ROM_SIZE_512 ? 0xa00000 : 0xa80000;
+		//			mapped_malloc(&extendedkickmem2a_bank);
+		//			extendedkickmem2b_bank.reserved_size = 524288;
+		//			extendedkickmem2b_bank.mask = extendedkickmem2a_bank.allocated_size - 1;
+		//			extendedkickmem2a_bank.start = extendedkickmem2a_bank.start + 524288;
+		//			mapped_malloc(&extendedkickmem2a_bank);
+		//			read_kickstart(f, extendedkickmem2a_bank.baseaddr, 524288, 0, 1);
+		//			read_kickstart(f, extendedkickmem2b_bank.baseaddr, 524288, 0, 1);
+		//			memset(kickmem_bank.baseaddr, 0, ROM_SIZE_512);
+		//			memcpy(kickmem_bank.baseaddr, extendedkickmem2a_bank.baseaddr, 0xd0);
+		//			memcpy(kickmem_bank.baseaddr + ROM_SIZE_512 - 20, romend, sizeof(romend));
+		//			kickstart_fix_checksum(kickmem_bank.baseaddr, ROM_SIZE_512);
+		//		}
+		//	}
+		//}
 
 		if (!singlebigrom) {
 			zfile_fseek(f, 0, SEEK_END);
@@ -2026,10 +2080,6 @@ static int load_kickstart (void)
 			}
 		}
 	}
-
-#if defined(AMIGA)
-chk_sum:
-#endif
 
 	kickstart_version = (kickmem_bank.baseaddr[12] << 8) | kickmem_bank.baseaddr[13];
 	if (kickstart_version == 0xffff) {
@@ -2250,7 +2300,7 @@ bool mapped_malloc (addrbank *ab)
 	if (id == -1) {
 		nocanbang ();
 		if (recurse)
-			return NULL;
+			return false;
 		recurse++;
 		mapped_malloc (ab);
 		recurse--;
@@ -2304,7 +2354,7 @@ bool mapped_malloc (addrbank *ab)
 		return ab->baseaddr != NULL;
 	}
 	if (recurse)
-		return NULL;
+		return false;
 	nocanbang ();
 	recurse++;
 	mapped_malloc (ab);
@@ -2573,7 +2623,9 @@ static void allocate_memory (void)
 		if (a3000hmem_bank.allocated_size > 0)
 			restore_ram (a3000hmem_filepos, a3000hmem_bank.baseaddr);
 	} else {
+#ifdef ARCADIA
 		alg_flag = 0;
+#endif
 	}
 #ifdef AGA
 	chipmem_bank_ce2.baseaddr = chipmem_bank.baseaddr;
@@ -2689,7 +2741,7 @@ void map_overlay (int chip)
 
 	if (chip < 0)
 		chip = overlay_state;
-
+#ifdef WITH_DRACO
 	if (currprefs.cs_compatible == CP_CASABLANCA) {
 		casablanca_map_overlay();
 		return;
@@ -2697,7 +2749,7 @@ void map_overlay (int chip)
 		draco_map_overlay();
 		return;
 	}
-
+#endif
 	size = chipmem_bank.allocated_size >= 0x180000 ? (chipmem_bank.allocated_size >> 16) : 32;
 	if (bogomem_aliasing)
 		size = 8;
@@ -3141,8 +3193,10 @@ void memory_reset (void)
 		break;
 #endif
 	case EXTENDED_ROM_ALG:
+#ifdef ARCADIA
 		map_banks_set(&extendedkickmem_bank, 0xF0, 4, 0);
 		alg_map_banks();
+#endif
 		break;
 	}
 
@@ -3388,7 +3442,7 @@ static addrbank *get_bank_cpu_thread(addrbank *bank)
 		at = xcalloc(addrbank_thread, 1);
 	thread_banks[thread_banks_used++] = at;
 	at->orig = bank;
-	memcpy(&at->ab, bank, sizeof addrbank);
+	memcpy(&at->ab, bank, sizeof (addrbank));
 	addrbank *tb = &at->ab;
 	tb->jit_read_flag = S_READ;
 	tb->jit_write_flag = S_WRITE;

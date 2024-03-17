@@ -301,9 +301,6 @@ static time_t generic_to_unix_stamp(long t)
 	dostm.tm_mday = t >> 16 & 0x1f;
 	dostm.tm_mon = ((t >> 16) + 5 & 0x0f) - 1;	/* 0..11 */
 	dostm.tm_year = ((t >> 16) + 9 & 0x7f) + 80;
-#if 0
-	dostm.tm_isdst = 0;	/* correct? */
-#endif
 	dostm.tm_isdst = -1;    /* correct? */
 #ifdef MKTIME
 	return (time_t) mktime(&dostm);
@@ -654,7 +651,7 @@ void init_header(char *name, struct stat *v_stat, LzHeader *hdr)
 	hdr->attribute = GENERIC_ATTRIBUTE;
 	hdr->header_level = header_level;
 	strcpy(hdr->name, name);
-	len = uaestrlen(name);
+	len = strlen(name);
 	hdr->crc = 0x0000;
 	hdr->extend_type = EXTEND_UNIX;
 	hdr->unix_last_modified_stamp = v_stat->st_mtime;

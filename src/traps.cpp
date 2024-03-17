@@ -269,7 +269,7 @@ static TrapContext *current_context;
 /*
 * Thread body for trap context
 */
-static void trap_thread (void *arg)
+static int trap_thread (void *arg)
 {
 	TrapContext *context = (TrapContext *) arg;
 
@@ -306,6 +306,9 @@ static void trap_thread (void *arg)
 	uae_sem_post (&context->switch_to_emu_sem);
 
 	/* Good bye, cruel world... */
+
+	/* dummy return value */
+	return 0;
 }
 
 
@@ -486,7 +489,7 @@ static uae_u32 REGPARAM2 exit_trap_handler(TrapContext *dummy_ctx)
 	}
 
 	/* Wait for trap context thread to exit. */
-	uae_wait_thread(context->thread);
+	uae_wait_thread(&context->thread);
 
 	/* Restore 68k state saved at trap entry. */
 	//regs = context->saved_regs;
@@ -571,7 +574,7 @@ static void hardware_trap_ack(TrapContext *ctx)
 	xfree(ctx);
 }
 
-static void hardware_trap_thread(void *arg)
+static int hardware_trap_thread(void *arg)
 {
 	size_t tid = (size_t)arg;
 	for (;;) {
@@ -631,6 +634,7 @@ static void hardware_trap_thread(void *arg)
 		}
 	}
 	hardware_trap_kill[tid] = -1;
+	return 0;
 }
 
 void trap_background_set_complete(TrapContext *ctx)
@@ -860,6 +864,11 @@ void init_extended_traps (void)
 	exit_trap_trapaddr = here();
 	calltrap (deftrap2 (exit_trap_handler, TRAPFLAG_NO_RETVAL, _T("exit_trap")));
 
+#ifdef AMIBERRY
+	if(trap_mutex != 0)
+		uae_sem_destroy(&trap_mutex);
+	trap_mutex = 0;
+#endif
 	uae_sem_init (&trap_mutex, 0, 1);
 }
 

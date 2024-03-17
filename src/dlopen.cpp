@@ -13,6 +13,13 @@
 #include "od-win32/win32.h"
 #endif
 
+#ifdef AMIBERRY
+#include "uae.h"
+#endif
+#ifdef __MACH__
+#include <mach-o/dyld.h>
+#endif
+
 UAE_DLHANDLE uae_dlopen(const TCHAR *path)
 {
 	UAE_DLHANDLE result;
@@ -37,11 +44,6 @@ UAE_DLHANDLE uae_dlopen(const TCHAR *path)
 
 void *uae_dlsym(UAE_DLHANDLE handle, const char *name)
 {
-#if 0
-	if (handle == NULL) {
-		return NULL;
-	}
-#endif
 #ifdef _WIN32
 	return (void *) GetProcAddress(handle, name);
 #else
@@ -75,9 +77,31 @@ UAE_DLHANDLE uae_dlopen_plugin(const TCHAR *name)
 	_tcscpy(path, name);
 	_tcscat(path, LT_MODULE_EXT);
 	UAE_DLHANDLE handle = WIN32_LoadLibrary(path);
+#elif defined (__MACH__)
+	TCHAR path[MAX_DPATH];
+	char exepath[MAX_DPATH];
+	uint32_t size = sizeof exepath;
+	std::string directory;
+	if (_NSGetExecutablePath(exepath, &size) == 0)
+	{
+		size_t last_slash_idx = string(exepath).rfind('/');
+		if (std::string::npos != last_slash_idx)
+		{
+			directory = string(exepath).substr(0, last_slash_idx);
+		}
+		last_slash_idx = directory.rfind('/');
+		if (std::string::npos != last_slash_idx)
+		{
+			directory = directory.substr(0, last_slash_idx);
+		}
+	}
+	_tcscpy(path, directory.append("/Resources/").append(name).c_str());
+	_tcscat(path, LT_MODULE_EXT);
+	UAE_DLHANDLE handle = uae_dlopen(path);
 #else
 	TCHAR path[MAX_DPATH];
-	_tcscpy(path, name);
+	std::string directory = start_path_data;
+	_tcscpy(path, directory.append("/").append(name).c_str());
 #ifdef _WIN64
 	_tcscat(path, _T("_x64"));
 #endif
@@ -97,6 +121,6 @@ void uae_dlopen_patch_common(UAE_DLHANDLE handle)
 	ptr = uae_dlsym(handle, "uae_log");
 	if (ptr) {
 		write_log(_T("DLOPEN: Patching common functions\n"));
-		*((uae_log_function *)ptr) = &uae_log;
+		*((uae_log_function *)ptr) = &write_log;
 	}
 }
