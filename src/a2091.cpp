@@ -45,7 +45,9 @@
 #include "cpuboard.h"
 #include "rtc.h"
 #include "devices.h"
+#ifdef WITH_DSP
 #include "dsp3210/dsp_glue.h"
+#endif
 
 #define DMAC_8727_ROM_VECTOR 0x8000
 #define CDMAC_ROM_VECTOR 0x2000
@@ -719,7 +721,7 @@ static bool do_dma_commodore_8727(struct wd_state *wd, struct scsi_data *scsi)
 				break;
 		}
 #if WD33C93_DEBUG > 0
-		write_log (_T("%s Done DMA from WD, %d/%d %08X\n"), WD33C93, scsi->offset, scsi->data_len, (odmac_acr << 1) & wd->dma_mask);
+		write_log(_T("%s Done DMA from WD, %d/%d %08X\n"), WD33C93, scsi->offset, scsi->data_len, (odmac_acr << 1) & wd->dma_mask);
 #endif
 		wd->cdmac.c8727_pcsd |= 1 << 7;
 		return true;
@@ -751,7 +753,7 @@ static bool do_dma_commodore_8727(struct wd_state *wd, struct scsi_data *scsi)
 				break;
 		}
 #if WD33C93_DEBUG > 0
-		write_log (_T("%s Done DMA to WD, %d/%d %08x\n"), WD33C93, scsi->offset, scsi->data_len, (odmac_acr << 1) & wd->dma_mask);
+		write_log(_T("%s Done DMA to WD, %d/%d %08x\n"), WD33C93, scsi->offset, scsi->data_len, (odmac_acr << 1) & wd->dma_mask);
 #endif
 		wd->cdmac.c8727_pcsd |= 1 << 7;
 		return true;
@@ -1396,7 +1398,7 @@ static void wd_cmd_reset (struct wd_chip_state *wd, bool irq, bool fast)
 	wd->wd_selected = false;
 	wd->scsi = NULL;
 	for (int j = 0; j < WD_STATUS_QUEUE; j++) {
-		memset(&wd->status[j], 0, sizeof status_data);
+		memset(&wd->status[j], 0, sizeof (status_data));
 	}
 	wd->queue_index = 0;
 	wd->auxstatus = 0;
@@ -1459,7 +1461,7 @@ static void wd_check_interrupt(struct wd_state *wds, bool checkonly)
 		wd->wd_busy = false;
 		if (wd->queue_index == 2) {
 			wd->status[0].irq = 1;
-			memcpy(&wd->status[0], &wd->status[1], sizeof status_data);
+			memcpy(&wd->status[0], &wd->status[1], sizeof (status_data));
 			wd->queue_index = 1;
 		} else {
 			wd->queue_index = 0;
@@ -2712,7 +2714,7 @@ static void REGPARAM2 dmac_a2091_lput (uaecptr addr, uae_u32 b)
 		dmac_a2091_lput(wd, addr, b);
 }
 
-static const addrbank dmaca2091_bank = {
+const addrbank dmaca2091_bank = {
 	dmac_a2091_lget, dmac_a2091_wget, dmac_a2091_bget,
 	dmac_a2091_lput, dmac_a2091_wput, dmac_a2091_bput,
 	dmac_a2091_xlate, dmac_a2091_check, NULL, _T("*"), _T("A2090/A2091/A590"),
@@ -3556,7 +3558,7 @@ static uae_u8 *REGPARAM2 dmac_gvp_xlate(uaecptr addr)
 	return wd->rom + addr;
 }
 
-static const addrbank gvp_bank = {
+const addrbank gvp_bank = {
 	dmac_gvp_lget, dmac_gvp_wget, dmac_gvp_bget,
 	dmac_gvp_lput, dmac_gvp_wput, dmac_gvp_bput,
 	dmac_gvp_xlate, dmac_gvp_check, NULL, _T("*"), _T("GVP"),
@@ -3628,9 +3630,11 @@ static void mbdmac_write_word (struct wd_state *wd, uae_u32 addr, uae_u32 val)
 		break;
 	case 0x5e:
 	case 0x80:
+#ifdef WITH_DSP
 		if (is_dsp_installed) {
 			dsp_write(val);
 		}
+#endif
 		break;
 	}
 }
@@ -3654,9 +3658,11 @@ static void mbdmac_write_byte (struct wd_state *wd, uae_u32 addr, uae_u32 val)
 		break;
 	case 0x5f:
 	case 0x80:
+#ifdef WITH_DSP
 		if (is_dsp_installed) {
 			dsp_write(val);
 		}
+#endif
 		break;
 	default:
 		if (addr & 1)
@@ -3726,9 +3732,11 @@ static uae_u32 mbdmac_read_word (struct wd_state *wd, uae_u32 addr)
 		break;
 	case 0x5e:
 	case 0x80:
+#ifdef WITH_DSP
 		if (is_dsp_installed) {
 			v = dsp_read();
 		}
+#endif
 		break;
 	}
 #if A3000_DEBUG_IO > 1
@@ -3762,9 +3770,11 @@ static uae_u32 mbdmac_read_byte (struct wd_state *wd, uae_u32 addr)
 		break;
 	case 0x5f:
 	case 0x80:
+#ifdef WITH_DSP
 		if (is_dsp_installed) {
 			v = dsp_read();
 		}
+#endif
 		break;
 	}
 #if A3000_DEBUG_IO > 1
@@ -3897,7 +3907,7 @@ static void wd_execute_cmd(struct wd_state *wds, int cmd, int msg, int unit)
 	}
 }
 
-static void scsi_thread (void *wdv)
+static int scsi_thread (void *wdv)
 {
 	struct wd_state *wds = (struct wd_state*)wdv;
 	struct wd_chip_state *wd = &wds->wc;
@@ -3911,6 +3921,7 @@ static void scsi_thread (void *wdv)
 		wd_execute_cmd(wds, cmd, msg, unit);
 	}
 	wds->scsi_thread_running = -1;
+	return 0;
 }
 
 void init_wd_scsi (struct wd_state *wd, bool dma24bit)
@@ -4119,7 +4130,7 @@ bool a2091_init (struct autoconfig_info *aci)
 	wd->configured = 0;
 	wd->autoconfig = true;
 	wd->board_mask = 65535;
-	memcpy(&wd->bank, &dmaca2091_bank, sizeof addrbank);
+	memcpy(&wd->bank, &dmaca2091_bank, sizeof (addrbank));
 	memcpy(wd->dmacmemory, aci->autoconfig_raw, sizeof wd->dmacmemory);
 
 	alloc_expansion_bank(&wd->bank, aci);
@@ -4206,7 +4217,7 @@ static bool a2090x_init (struct autoconfig_info *aci, bool combitec)
 	wd->configured = 0;
 	wd->autoconfig = true;
 	wd->board_mask = 65535;
-	memcpy(&wd->bank, &dmaca2091_bank, sizeof addrbank);
+	memcpy(&wd->bank, &dmaca2091_bank, sizeof (addrbank));
 	memcpy(wd->dmacmemory, aci->autoconfig_raw, sizeof wd->dmacmemory);
 
 	alloc_expansion_bank(&wd->bank, aci);
@@ -4249,7 +4260,7 @@ bool a2090b_preinit (struct autoconfig_info *aci)
 	struct wd_state *wd = getscsi(aci->rc);
 	if (!wd)
 		return false;
-	memcpy(&wd->bank2, &combitec_bank, sizeof addrbank);
+	memcpy(&wd->bank2, &combitec_bank, sizeof (addrbank));
 	wd->bank2.start = 0xf10000;
 	wd->bank2.reserved_size = 0x10000;
 	wd->bank2.mask = 0xffff;
@@ -4357,7 +4368,7 @@ static bool gvp_init(struct autoconfig_info *aci, bool series2, bool accel, uae_
 	init_wd_scsi(wd, aci->rc->dma24bit);
 	wd->configured = 0;
 	wd->threaded = true;
-	memcpy(&wd->bank, &gvp_bank, sizeof addrbank);
+	memcpy(&wd->bank, &gvp_bank, sizeof (addrbank));
 	wd->autoconfig = true;
 	wd->rombankswitcher = 0;
 	memset(wd->dmacmemory, 0xff, sizeof wd->dmacmemory);
@@ -4540,7 +4551,7 @@ bool comspec_preinit (struct autoconfig_info *aci)
 	wd->autoconfig = true;
 	wd->board_mask = 65535;
 	wd->wc.resetnodelay = true;
-	memcpy(&wd->bank, &comspec_bank, sizeof addrbank);
+	memcpy(&wd->bank, &comspec_bank, sizeof (addrbank));
 	memcpy(wd->dmacmemory, aci->autoconfig_raw, sizeof wd->dmacmemory);
 
 	alloc_expansion_bank(&wd->bank, aci);

@@ -27,6 +27,7 @@
 #include "gensound.h"
 #include "picasso96.h"
 #include "filesys.h"
+#include "target.h"
 
 /*
 * Returns UAE Version
@@ -68,8 +69,8 @@ static uae_u32 emulib_EnableSound (uae_u32 val)
 */
 static uae_u32 emulib_EnableJoystick (uae_u32 val)
 {
-	currprefs.jports[0].jd[0].id = val & 255;
-	currprefs.jports[1].jd[0].id = (val >> 8) & 255;
+	currprefs.jports[0].id = val & 255;
+	currprefs.jports[1].id = (val >> 8) & 255;
 	return 1;
 }
 
@@ -220,7 +221,7 @@ static uae_u32 emulib_GetUaeConfig(TrapContext *ctx, uaecptr place)
 	trap_put_long(ctx, place + 12, fastmem_bank[0].allocated_size);
 	trap_put_long(ctx, place + 16, currprefs.gfx_framerate);
 	trap_put_long(ctx, place + 20, currprefs.produce_sound);
-	trap_put_long(ctx, place + 24, currprefs.jports[0].jd[0].id | (currprefs.jports[1].jd[0].id << 8));
+	trap_put_long(ctx, place + 24, currprefs.jports[0].id | (currprefs.jports[1].id << 8));
 	trap_put_long(ctx, place + 28, currprefs.keyboard_lang);
 	if (disk_empty (0))
 		trap_put_byte(ctx, place + 32, 0);
@@ -334,6 +335,7 @@ static int native_dos_op(TrapContext *ctx, uae_u32 mode, uae_u32 p1, uae_u32 p2,
 	TCHAR tmp[MAX_DPATH];
 	char *s;
 	int v;
+	std::string tmp_string;
 
 	if (mode)
 		return -1;
@@ -343,11 +345,52 @@ static int native_dos_op(TrapContext *ctx, uae_u32 mode, uae_u32 p1, uae_u32 p2,
 	v = get_native_path(ctx, p1, tmp);
 	if (v)
 		return v;
-	s = ua (tmp);
+	
+	tmp_string.assign(tmp);
+	replace(tmp_string, " ", "\\ ");
+	
+	s = ua (tmp_string.c_str());
 	trap_put_string(ctx, (uae_u8*)s, p2, p3);
 	xfree (s);
 	return 0;
 }
+
+// Execute a command on the Host OS
+static uae_u32 emulib_execute_on_host(TrapContext* ctx, uaecptr name)
+{
+	char real_name[MAX_DPATH];
+	if (trap_get_string(ctx, real_name, name, sizeof real_name) >= static_cast<int>(sizeof real_name))
+		return 0; /* ENAMETOOLONG */
+
+	target_execute(real_name);
+	return 1;
+}
+
+#if 0
+static uae_u32 emulib_host_session(TrapContext* ctx, uaecptr name, uae_u32 out, uae_u32 outsize)
+{
+	char real_name[MAX_DPATH];
+	if (trap_get_string(ctx, real_name, name, sizeof real_name) >= sizeof real_name)
+		return 0; /* ENAMETOOLONG */
+
+	char buffer[128];
+	std::string result = "";
+	auto* pipe = popen(real_name, "r");
+	if (!pipe) throw std::runtime_error("popen() failed!");
+	try
+	{
+		while (fgets(buffer, sizeof buffer, pipe) != nullptr)
+			result += buffer;
+	}
+	catch (...)
+	{
+		pclose(pipe);
+	}
+	pclose(pipe);
+	trap_put_string(ctx, result.c_str(), out, outsize - 1);
+	return 0;
+}
+#endif
 
 static uae_u32 uaelib_demux_common(TrapContext *ctx, uae_u32 ARG0, uae_u32 ARG1, uae_u32 ARG2, uae_u32 ARG3, uae_u32 ARG4, uae_u32 ARG5)
 {
@@ -405,7 +448,11 @@ static uae_u32 uaelib_demux_common(TrapContext *ctx, uae_u32 ARG0, uae_u32 ARG1,
 			trap_set_dreg(ctx, 1, d1);
 			return d0;
 		}
-
+		case 88:
+		if (currprefs.native_code)
+			return emulib_execute_on_host(ctx, ARG1);
+		return 0;
+		//case 89: return emulib_host_session(ctx, ARG1, ARG2, ARG3);
 	}
 	return 0;
 }
@@ -465,7 +512,7 @@ void emulib_install (void)
 	if (!uae_boot_rom_type && !currprefs.uaeboard)
 		return;
 	a = here ();
-	currprefs.mmkeyboard = 0;
+	currprefs.mmkeyboard = false;
 	org (rtarea_base + 0xFF60);
 	calltrap (deftrapres (uaelib_demux, 0, _T("uaelib_demux")));
 	dw (RTS);

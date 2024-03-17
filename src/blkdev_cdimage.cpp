@@ -13,8 +13,11 @@
 */
 #include "sysconfig.h"
 #include "sysdeps.h"
-
+#ifdef HAVE_SYS_TIMEB_H
 #include <sys/timeb.h>
+#endif
+#include <sys/types.h>
+#include <sys/wait.h>
 
 #include "options.h"
 #include "traps.h"
@@ -35,10 +38,10 @@
 #endif
 
 #define FLAC__NO_DLL
+#include "zarchive.h"
 #include "FLAC/stream_decoder.h"
 
 #ifdef WITH_CHD
-#include "archivers/chd/chdtypes.h"
 #include "archivers/chd/chd.h"
 #include "archivers/chd/chdcd.h"
 #endif
@@ -176,7 +179,7 @@ static int do_read (struct cdunit *cdu, struct cdtoc *t, uae_u8 *data, int secto
 		}
 		if (audio && size == 2352)
 			type = CD_TRACK_AUDIO;
-		if (cdrom_read_data(cdu->chd_cdf, sector + (UINT32)t->offset, tmpbuf, type, false)) {
+		if (cdrom_read_data(cdu->chd_cdf, sector + (uint32_t)t->offset, tmpbuf, type, false)) {
 			memcpy(data, tmpbuf + offset, size);
 			return 1;
 		}
@@ -389,7 +392,7 @@ static int setstate (struct cdunit *cdu, int state, int playpos)
 	return 0;
 }
 
-static void cdda_unpack_func (void *v)
+static int cdda_unpack_func (void *v)
 {
 	cdimage_unpack_thread = 1;
 	mp3decoder *mp3dec = NULL;
@@ -430,6 +433,7 @@ static void cdda_unpack_func (void *v)
 	}
 	delete mp3dec;
 	cdimage_unpack_thread = -1;
+	return 0;
 }
 
 static void audio_unpack(struct cdunit *cdu, struct cdtoc *t)
@@ -492,12 +496,22 @@ static bool cdda_play_func2 (struct cdunit *cdu, int *outpos)
 		if (oldplay != cdu->cdda_play) {
 			struct cdtoc *t;
 			int sector, diff;
+#ifdef WIN32
 			struct _timeb tb1, tb2;
+#else
+#ifdef HAVE_SYS_TIMEB_H
+			struct timespec ts1, ts2;
+#else
+#warning Missing timing functions
+#endif
+#endif
 
 			idleframes = 0;
 			silentframes = 0;
 			foundsub = false;
-			_ftime (&tb1);
+#ifdef HAVE_SYS_TIMEB_H
+			clock_gettime(CLOCK_REALTIME, &ts1);
+#endif
 			cdda_pos = cdu->cdda_start;
 			oldplay = cdu->cdda_play;
 			sector = cdu->cd_last_pos = cdda_pos;
@@ -552,9 +566,13 @@ static bool cdda_play_func2 (struct cdunit *cdu, int *outpos)
 			cdda_pos -= idleframes;
 
 			if (*outpos < 0) {
-				_ftime (&tb2);
-				diff = (int)((tb2.time * (uae_s64)1000 + tb2.millitm) - (tb1.time * (uae_s64)1000 + tb1.millitm));
+#ifdef HAVE_SYS_TIMEB_H
+				clock_gettime(CLOCK_REALTIME, &ts2);
+				diff = (int)(ts2.tv_sec * (uae_s64)1000 + (ts2.tv_nsec / 1000000) - (ts1.tv_sec * (uae_s64)1000 + (ts1.tv_nsec / 1000000)));
 				diff -= cdu->cdda_delay;
+#else
+				diff = 0;
+#endif
 				if (idleframes >= 0 && diff < 0 && cdu->cdda_play > 0)
 					sleep_millis(-diff);
 				setstate (cdu, AUDIO_STATUS_IN_PROGRESS, cdda_pos);
@@ -730,7 +748,7 @@ end:
 	return restart;
 }
 
-static void cdda_play_func (void *v)
+static int cdda_play_func (void *v)
 {
 	int outpos = -1;
 	struct cdunit *cdu = (struct cdunit*)v;
@@ -750,6 +768,7 @@ static void cdda_play_func (void *v)
 		cdu->cdda_play = 1;
 	}
 	cdu->thread_active = false;
+	return 0;
 }
 
 static void cdda_stop (struct cdunit *cdu)
@@ -1214,66 +1233,66 @@ static int readval (const TCHAR *s)
 #pragma pack(1)
 
 typedef struct {
-    uae_u8 signature[16]; /* "MEDIA DESCRIPTOR" */
-    uae_u8 version[2]; /* Version ? */
-    uae_u16 medium_type; /* Medium type */
-    uae_u16 num_sessions; /* Number of sessions */
-    uae_u16 __dummy1__[2]; /* Wish I knew... */
-    uae_u16 bca_len; /* Length of BCA data (DVD-ROM) */
-    uae_u32 __dummy2__[2];
-    uae_u32 bca_data_offset; /* Offset to BCA data (DVD-ROM) */
-    uae_u32 __dummy3__[6]; /* Probably more offsets */
-    uae_u32 disc_structures_offset; /* Offset to disc structures */
-    uae_u32 __dummy4__[3]; /* Probably more offsets */
-    uae_u32 sessions_blocks_offset; /* Offset to session blocks */
-    uae_u32 dpm_blocks_offset; /* offset to DPM data blocks */
+	uae_u8 signature[16]; /* "MEDIA DESCRIPTOR" */
+	uae_u8 version[2]; /* Version ? */
+	uae_u16 medium_type; /* Medium type */
+	uae_u16 num_sessions; /* Number of sessions */
+	uae_u16 __dummy1__[2]; /* Wish I knew... */
+	uae_u16 bca_len; /* Length of BCA data (DVD-ROM) */
+	uae_u32 __dummy2__[2];
+	uae_u32 bca_data_offset; /* Offset to BCA data (DVD-ROM) */
+	uae_u32 __dummy3__[6]; /* Probably more offsets */
+	uae_u32 disc_structures_offset; /* Offset to disc structures */
+	uae_u32 __dummy4__[3]; /* Probably more offsets */
+	uae_u32 sessions_blocks_offset; /* Offset to session blocks */
+	uae_u32 dpm_blocks_offset; /* offset to DPM data blocks */
 } MDS_Header; /* length: 88 bytes */
 
 typedef struct {
-    uae_s32 session_start; /* Session's start address */
-    uae_s32 session_end; /* Session's end address */
-    uae_u16 session_number; /* (Unknown) */
-    uae_u8 num_all_blocks; /* Number of all data blocks. */
-    uae_u8 num_nontrack_blocks; /* Number of lead-in data blocks */
-    uae_u16 first_track; /* Total number of sessions in image? */
-    uae_u16 last_track; /* Number of regular track data blocks. */
-    uae_u32 __dummy2__; /* (unknown) */
-    uae_u32 tracks_blocks_offset; /* Offset of lead-in+regular track data blocks. */
+	uae_s32 session_start; /* Session's start address */
+	uae_s32 session_end; /* Session's end address */
+	uae_u16 session_number; /* (Unknown) */
+	uae_u8 num_all_blocks; /* Number of all data blocks. */
+	uae_u8 num_nontrack_blocks; /* Number of lead-in data blocks */
+	uae_u16 first_track; /* Total number of sessions in image? */
+	uae_u16 last_track; /* Number of regular track data blocks. */
+	uae_u32 __dummy2__; /* (unknown) */
+	uae_u32 tracks_blocks_offset; /* Offset of lead-in+regular track data blocks. */
 } MDS_SessionBlock; /* length: 24 bytes */
 
 typedef struct {
-    uae_u8 mode; /* Track mode */
-    uae_u8 subchannel; /* Subchannel mode */
-    uae_u8 adr_ctl; /* Adr/Ctl */
-    uae_u8 __dummy2__; /* Track flags? */
-    uae_u8 point; /* Track number. (>0x99 is lead-in track) */
-    
-    uae_u32 __dummy3__;
-    uae_u8 min; /* Min */
-    uae_u8 sec; /* Sec */
-    uae_u8 frame; /* Frame */
-    uae_u32 extra_offset; /* Start offset of this track's extra block. */
-    uae_u16 sector_size; /* Sector size. */
-    
-    uae_u8 __dummy4__[18];
-    uae_u32 start_sector; /* Track start sector (PLBA). */
-    uae_u64 start_offset; /* Track start offset. */
-    uae_u8 session; /* Session or index? */
-    uae_u8 __dummy5__[3];
-    uae_u32 footer_offset; /* Start offset of footer. */
-    uae_u8 __dummy6__[24];
+	uae_u8 mode; /* Track mode */
+	uae_u8 subchannel; /* Subchannel mode */
+	uae_u8 adr_ctl; /* Adr/Ctl */
+	uae_u8 __dummy2__; /* Track flags? */
+	uae_u8 point; /* Track number. (>0x99 is lead-in track) */
+	
+	uae_u32 __dummy3__;
+	uae_u8 min; /* Min */
+	uae_u8 sec; /* Sec */
+	uae_u8 frame; /* Frame */
+	uae_u32 extra_offset; /* Start offset of this track's extra block. */
+	uae_u16 sector_size; /* Sector size. */
+	
+	uae_u8 __dummy4__[18];
+	uae_u32 start_sector; /* Track start sector (PLBA). */
+	uae_u64 start_offset; /* Track start offset. */
+	uae_u8 session; /* Session or index? */
+	uae_u8 __dummy5__[3];
+	uae_u32 footer_offset; /* Start offset of footer. */
+	uae_u8 __dummy6__[24];
 } MDS_TrackBlock; /* length: 80 bytes */
 
 typedef struct {
-    uae_u32 pregap; /* Number of sectors in pregap. */
-    uae_u32 length; /* Number of sectors in track. */
+	uae_u32 pregap; /* Number of sectors in pregap. */
+	uae_u32 length; /* Number of sectors in track. */
 } MDS_TrackExtraBlock; /* length: 8 bytes */
 
 typedef struct {
-    uae_u32 filename_offset; /* Start offset of image filename. */
-    uae_u32 widechar_filename; /* Seems to be set to 1 if widechar filename is used */
-    uae_u32 __dummy1__;
-    uae_u32 __dummy2__;
+	uae_u32 filename_offset; /* Start offset of image filename. */
+	uae_u32 widechar_filename; /* Seems to be set to 1 if widechar filename is used */
+	uae_u32 __dummy1__;
+	uae_u32 __dummy2__;
 } MDS_Footer; /* length: 16 bytes */
 
 #pragma pack()
@@ -1378,14 +1397,13 @@ static int parsechd (struct cdunit *cdu, struct zfile *zcue, const TCHAR *img, c
 	if (curdir)
 		my_setcurrentdir(ocurdir, NULL);
 
-	chd_error err;
 	struct cdrom_file *cdf;
 	struct zfile *f = zfile_dup (zcue);
 	if (!f)
 		return 0;
 	chd_file *cf = new chd_file();
-	err = cf->open(*f, false, NULL);
-	if (err != CHDERR_NONE) {
+	auto err = cf->open(f->name, false, NULL);
+	if (err != std::error_condition()) {
 		write_log (_T("CHD '%s' err=%d\n"), zfile_getname (zcue), err);
 		zfile_fclose (f);
 		return 0;
@@ -1443,7 +1461,7 @@ static int parsechd (struct cdunit *cdu, struct zfile *zcue, const TCHAR *img, c
 		dtrack->filesize = cf->logical_bytes ();
 		dtrack->track = i + 1;
 		dtrack[1].address = dtrack->address + strack->frames;
-		if (cf->hunk_info((UINT32)(dtrack->offset * CD_FRAME_SIZE / hunksize), compr, cbytes) == CHDERR_NONE) {
+		if (cf->hunk_info((unsigned int)(dtrack->offset * CD_FRAME_SIZE / hunksize), compr, cbytes) == std::error_condition()) {
 			TCHAR tmp[100];
 			uae_u32 c = (uae_u32)compr;
 			for (int j = 0; j < 4; j++) {

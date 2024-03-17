@@ -33,27 +33,31 @@ int disk_debug_track = -1;
 #include "gui.h"
 #include "zfile.h"
 #include "newcpu.h"
-#include "osemu.h"
-#include "execlib.h"
+//#include "osemu.h"
+//#include "execlib.h"
 #include "savestate.h"
 #include "cia.h"
 #include "debug.h"
 #ifdef FDI2RAW
 #include "fdi2raw.h"
 #endif
+#ifdef CATWEASEL
 #include "catweasel.h"
+#endif
 #ifdef DRIVESOUND
 #include "driveclick.h"
 #endif
 #ifdef CAPS
-#include "caps/caps_win32.h"
+#include "uae/caps.h"
 #endif
 #ifdef SCP
 #include "scp.h"
 #endif
 #include "crc32.h"
 #include "inputrecord.h"
+#ifdef AMAX
 #include "amax.h"
+#endif
 #ifdef RETROPLATFORM
 #include "rp.h"
 #endif
@@ -325,7 +329,9 @@ static void disk_date (uae_u8 *p)
 	struct mytimeval mtv;
 
 	gettimeofday (&tv, NULL);
+#ifndef __PSP2__
 	tv.tv_sec -= _timezone;
+#endif
 	mtv.tv_sec = tv.tv_sec;
 	mtv.tv_usec = tv.tv_usec;
 	timeval_to_amiga (&mtv, &days, &mins, &ticks, 50);
@@ -371,7 +377,7 @@ static void createbootblock (uae_u8 *sector, int bootable, bool ffs)
 	}
 }
 
-static void createrootblock (uae_u8 *sector, int bmblock, const TCHAR *disk_name)
+static void createrootblock(uae_u8* sector, int bmblock, const TCHAR* disk_name)
 {
 	char *dn = ua (disk_name);
 	if (strlen (dn) >= 30)
@@ -387,7 +393,7 @@ static void createrootblock (uae_u8 *sector, int bmblock, const TCHAR *disk_name
 	// bitmap valid
 	sector[312] = sector[313] = sector[314] = sector[315] = (uae_u8)0xff;
 	// bitmap block
-	sector[316+2] = bmblock >> 8; sector[316+3] = bmblock & 255;
+	sector[316 + 2] = bmblock >> 8; sector[316 + 3] = bmblock & 255;
 	// disk name
 	sector[432] = (uae_u8)strlen (dn2);
 	strcpy ((char*)sector + 433, dn2);
@@ -519,7 +525,7 @@ static int createfileheaderblock (struct zfile *z,uae_u8 *sector, int parent, co
 		if (extensionblocks == 0) {
 			pl (sector, 512 - 204 - extensioncounter * 4, datablock2);
 		} else {
-			pl (sector3, 512 - 204 - extensioncounter * 4, datablock2);
+			pl(sector3, 512 - 204 - extensioncounter * 4, datablock2);
 		}
 		extensioncounter++;
 	}
@@ -602,7 +608,7 @@ static int createimagefromexe(struct zfile *src, struct zfile *dst, int hd, bool
 
 	fblock1 = createfileheaderblock (dst, sector1, 880 * hd, fname1, src, bitmap, ffs, &prevblock);
 
-	createrootblock (sector1, 880 * hd + 1, zfile_getfilename (src));
+	createrootblock(sector1, 880 * hd + 1, zfile_getfilename(src));
 	pl (sector1, 24 + dirhash (fname1) * 4, fblock1);
 	pl (sector1, 24 + dirhash (dirname1) * 4, dblock1);
 	disk_checksum(sector1, sector1 + 20);
@@ -988,7 +994,7 @@ int DISK_validate_filename (struct uae_prefs *p, const TCHAR *fname_in, int num,
 		if (f && crc32)
 			*crc32 = zfile_crc32 (f);
 		if (!zf) {
-			zfile_fclose (f);
+			zfile_fclose(f);
 		} else {
 			*zf = f;
 		}
@@ -1070,7 +1076,7 @@ static void saveimagecutpathpart(TCHAR *name)
 {
 	int i;
 
-	i = uaetcslen(name) - 1;
+	i = _tcslen (name) - 1;
 	while (i > 0) {
 		if (name[i] == '/' || name[i] == '\\') {
 			name[i] = 0;
@@ -1097,7 +1103,7 @@ static void saveimagecutfilepart(TCHAR *name)
 	int i;
 
 	_tcscpy(tmp, name);
-	i = uaetcslen(tmp) - 1;
+	i = _tcslen(tmp) - 1;
 	while (i > 0) {
 		if (tmp[i] == '/' || tmp[i] == '\\') {
 			_tcscpy(name, tmp + i + 1);
@@ -1133,7 +1139,7 @@ static TCHAR *DISK_get_default_saveimagepath (const TCHAR *name)
 	TCHAR path[MAX_DPATH];
 	_tcscpy(name1, name);
 	saveimagecutfilepart(name1);
-	fetch_saveimagepath (path, sizeof path / sizeof (TCHAR), 1);
+	get_saveimage_path(path, sizeof path / sizeof (TCHAR), 1);
 	saveimageaddfilename(path, name1, 0);
 	return my_strdup(path);
 }
@@ -1357,7 +1363,9 @@ static int drive_insert (drive *drv, struct uae_prefs *p, int dnum, const TCHAR 
 	drv->buffered_side = -1;
 	if (!fake) {
 		drv->dskeject = false;
+#ifdef RETROPLATFORM
 		gui_disk_image_change (dnum, outname, drv->wrprot);
+#endif
 	}
 
 	if (!drv->motoroff) {
@@ -2980,7 +2988,9 @@ static void drive_eject (drive * drv)
 	drive_settype_id (drv); /* Back to 35 DD */
 	if (disk_debug_logging > 0)
 		write_log (_T("eject drive %ld\n"), drv - &floppy[0]);
+#ifdef RETROPLATFORM
 	gui_disk_image_change(drv->drvnum, NULL, drv->wrprot);
+#endif
 	inprec_recorddiskchange (drv->drvnum, NULL, false);
 }
 
@@ -3344,24 +3354,6 @@ void disk_insert_force (int num, const TCHAR *name, bool forcedwriteprotect)
 	disk_insert_2 (num, name, 1, forcedwriteprotect);
 }
 
-static void floppybridge_getsetprofile(int i)
-{
-	if (currprefs.floppyslots[i].dfxsubtype == 0 || currprefs.floppyslots[i].dfxsubtypeid[0] == 0) {
-		int sub = currprefs.floppyslots[i].dfxsubtype;
-		if (sub == 0) {
-			sub = 1;
-		}
-		if (sub - 1 < bridgeprofiles.size()) {
-			int nsub = sub - 1;
-			TCHAR tmp[32];
-			_stprintf(tmp, _T("%d:%s"), bridgeprofiles.at(nsub).profileID, bridgeprofiles.at(nsub).name);
-			currprefs.floppyslots[i].dfxsubtype = changed_prefs.floppyslots[i].dfxsubtype = sub;
-			_tcscpy(changed_prefs.floppyslots[i].dfxsubtypeid, tmp);
-			_tcscpy(currprefs.floppyslots[i].dfxsubtypeid, changed_prefs.floppyslots[i].dfxsubtypeid);
-		}
-	}
-}
-
 static void DISK_check_change (void)
 {
 	if (currprefs.floppy_speed != changed_prefs.floppy_speed)
@@ -3380,35 +3372,14 @@ static void DISK_check_change (void)
 			*/
 			setdskchangetime(drv, 2 * 50 * 312);
 		}
-
-		if (_tcscmp(currprefs.floppyslots[i].dfxprofile, changed_prefs.floppyslots[i].dfxprofile)) {
-			TCHAR tmp[256];
-			_tcscpy(tmp, changed_prefs.floppyslots[i].dfxprofile);
-			const TCHAR *idx = _tcschr(tmp, ':');
-			if (idx) {
-				tmp[idx - tmp] = 0;
-			}
-			for (int j = 0; drivetypes[j]; j++) {
-				if (!_tcsicmp(tmp, drivetypes[j])) {
-					changed_prefs.floppyslots[i].dfxtype = j - 1;
-					if (j > 0) {
-						dc = true;
-					}
-				}
-			}
-		}
-
 		if (currprefs.floppyslots[i].dfxtype != changed_prefs.floppyslots[i].dfxtype ||
-			_tcscmp(currprefs.floppyslots[i].dfxprofile, changed_prefs.floppyslots[i].dfxprofile) ||
 			currprefs.floppyslots[i].dfxsubtype != changed_prefs.floppyslots[i].dfxsubtype) {
 			int old = currprefs.floppyslots[i].dfxtype;
 			currprefs.floppyslots[i].dfxtype = changed_prefs.floppyslots[i].dfxtype;
 			currprefs.floppyslots[i].dfxsubtype = changed_prefs.floppyslots[i].dfxsubtype;
 			_tcscpy(currprefs.floppyslots[i].dfxsubtypeid, changed_prefs.floppyslots[i].dfxsubtypeid);
-			_tcscpy(currprefs.floppyslots[i].dfxprofile, changed_prefs.floppyslots[i].dfxprofile);
 #ifdef FLOPPYBRIDGE
 			if (old >= DRV_FB || currprefs.floppyslots[i].dfxtype >= DRV_FB) {
-				floppybridge_getsetprofile(i);
 				floppybridge_init(&currprefs);
 				dc = true;
 			}
@@ -3674,10 +3645,12 @@ uae_u8 DISK_status_ciaa(void)
 	for (int dr = 0; dr < MAX_FLOPPY_DRIVES; dr++) {
 		drive *drv = floppy + dr;
 		if (drv->amax) {
+#ifdef AMAX
 			if (amax_active())
 				st = amax_disk_status (st);
+#endif
 		} else if (!((selected | disabled) & (1 << dr))) {
-			if (drive_running (drv)) {
+			if (drive_running(drv)) {
 				if (drv->catweasel) {
 #ifdef CATWEASEL
 					if (catweasel_diskready (drv->catweasel))
@@ -3814,7 +3787,7 @@ void dumpdisk (const TCHAR *name)
 		side, dskdmaen, bitoffset, word, dskpt, dsklen, dskbytr_val, adkcon, dsksync);
 }
 
-static void disk_dmafinished(void)
+static void disk_dmafinished (void)
 {
 	INTREQ_INT(1, 1);
 	if (floppy_writemode > 0)
@@ -3824,7 +3797,7 @@ static void disk_dmafinished(void)
 	dsklen = 0;
 	if (disk_debug_logging > 0) {
 		int dr;
-		write_log (_T("disk dma finished %08X-%08X (%04X, %d) MFMpos="), dskpt_start, dskpt, (dskpt - dskpt_start) / 2, (dskpt - dskpt_start) / 2);
+		write_log(_T("disk dma finished %08X-%08X (%04X, %d) MFMpos="), dskpt_start, dskpt, (dskpt - dskpt_start) / 2, (dskpt - dskpt_start) / 2);
 		for (dr = 0; dr < MAX_FLOPPY_DRIVES; dr++)
 			write_log (_T("%d%s"), floppy[dr].mfmpos, dr < MAX_FLOPPY_DRIVES - 1 ? _T(",") : _T(""));
 		write_log (_T("\n"));
@@ -4011,7 +3984,7 @@ static int disk_doupdate_write(int floppybits, int trackspeed)
 						dskpt += 2;
 					}
 				}
-				if (disk_fifostatus() >= 0) {
+				if (disk_fifostatus () >= 0) {
 #ifdef FLOPPYBRIDGE
 					bool wasBridge = false;
 #endif
@@ -4226,7 +4199,7 @@ int disk_fifostatus (void)
 	return 0;
 }
 
-static int doreaddma(void)
+static int doreaddma (void)
 {
 	if (dmaen(DMA_DISK) && bitoffset == 15 && dma_enable && dskdmaen == DSKDMA_READ && dsklength >= 0) {
 		if (dsklength > 0) {
@@ -4238,7 +4211,7 @@ static int doreaddma(void)
 					dskpt += 2;
 				}
 			}
-			if (disk_fifostatus() > 0) {
+			if (disk_fifostatus () > 0) {
 				return -1;
 			} else {
 				dsklength--;
@@ -4246,7 +4219,7 @@ static int doreaddma(void)
 				if (disk_fifostatus() < 0 && dsklength == 0) {
 					disk_dmafinished();
 				} else {
-					DSKDAT(word);
+					DSKDAT (word);
 #if DISK_DEBUG_X > 1
 					write_log("buffer load %d %d\n", floppy[0].mfmpos, dsklength);
 #endif
@@ -4284,7 +4257,7 @@ static void wordsync_detected(bool startup)
 				}
 			}
 			write_log(_T("Sync match %04x mfmpos %d enable %d->%d bcnt %d ADKCON %04x PC=%08x\n"),
-				dsksync, pos, prev_dma_enabled, dma_enable, bitoffset, adkcon, M68K_GETPC);
+			          dsksync, pos, prev_dma_enabled, dma_enable, bitoffset, adkcon, M68K_GETPC);
 			if (disk_debug_logging > 1)
 				dumpdisk(_T("SYNC"));
 		}
@@ -4411,7 +4384,7 @@ static int disk_doupdate_read(drive *drv, int floppybits)
 		}
 
 		//write_log (_T("%08X bo=%d so=%d mfmpos=%d dma=%d\n"), (word & 0xffffff), bitoffset, syncoffset, drv->mfmpos, dma_enable);
-		if (doreaddma() < 0) {
+		if (doreaddma () < 0) {
 			word >>= 1;
 			return floppybits;
 		}
@@ -4690,7 +4663,7 @@ void DISK_hsync (void)
 
 #ifdef FLOPPYBRIDGE
 		if (drv->bridge && drv->writepending) {
-			// With bridge we wait for the disk to commit the data before fireing the DMA
+			// With bridge we wait for the disk to commit the data before firing the DMA
 			if (drv->bridge->isWriteComplete()) {
 				disk_dmafinished();
 				drv->writepending = false;
@@ -4706,7 +4679,7 @@ void DISK_hsync (void)
 	if (linecounter) {
 		linecounter--;
 		if (! linecounter) {
-			disk_dmafinished();
+			disk_dmafinished ();
 		}
 		return;
 	}
@@ -4834,7 +4807,7 @@ static void DSKLEN_2(uae_u16 v, int hpos)
 			return;
 		}
 		dskdmaen = DSKDMA_READ;
-		DISK_start();
+		DISK_start ();
 		weirddma = dsklength < 544 * 11 + FLOPPY_GAP_LEN;
 	}
 	if (!(v & 0x8000)) {
@@ -4860,7 +4833,7 @@ static void DSKLEN_2(uae_u16 v, int hpos)
 		return;
 
 	if (dsklength == 0 && dma_enable) {
-		disk_dmafinished();
+		disk_dmafinished ();
 		return;
 	}
 
@@ -4868,7 +4841,7 @@ static void DSKLEN_2(uae_u16 v, int hpos)
 		if (dsklength == 0)
 			return;
 		if (dsklength == 1) {
-			disk_dmafinished();
+			disk_dmafinished ();
 			return;
 		}
 		if (dskdmaen == DSKDMA_WRITE) {
@@ -5298,14 +5271,11 @@ bool floppybridge_has(void)
 
 static void floppybridge_init2(struct uae_prefs *p)
 {
-	static const TCHAR *floppybridgeprofile = _T("FloppyBridge:");
-	bool needbridge = false;
-
 	floppybridge_init3();
+	bool needbridge = false;
 	for (int i = 0; i < MAX_FLOPPY_DRIVES; i++) {
-		TCHAR *profile = p->floppyslots[i].dfxprofile;
 		int type = p->floppyslots[i].dfxtype;
-		if (type >= DRV_FB || !_tcsncmp(profile, floppybridgeprofile, _tcslen(floppybridgeprofile))) {
+		if (type >= DRV_FB) {
 			needbridge = true;
 		}
 	}
@@ -5320,14 +5290,6 @@ static void floppybridge_init2(struct uae_prefs *p)
 		return;
 	}
 	for (int dr = 0; dr < MAX_FLOPPY_DRIVES; dr++) {
-		TCHAR *profile = p->floppyslots[dr].dfxprofile;
-		if (!_tcsncmp(profile, floppybridgeprofile, _tcslen(floppybridgeprofile))) {
-			profile += _tcslen(floppybridgeprofile);
-			if (p->floppyslots[dr].dfxtype != DRV_FB) {
-				p->floppyslots[dr].dfxtype = DRV_FB;
-				changed_prefs.floppyslots[dr].dfxtype = DRV_FB;
-			}
-		}
 		int type = p->floppyslots[dr].dfxtype;
 		if (type == DRV_FB) {
 			if (floppy[dr].bridge == NULL || type != bridge_type[dr]) {
@@ -5340,39 +5302,28 @@ static void floppybridge_init2(struct uae_prefs *p)
 				bridge_driver[dr] = NULL;
 				bridge_type[dr] = type;
 				FloppyBridgeAPI *bridge = NULL;
-				if (profile[0]) {
-					char *a = ua(profile);
-					bridge = FloppyBridgeAPI::createDriverFromString(a);
-					if (!bridge) {
-						write_log(_T("FB profile '%s' failed\n"), profile);
+				int id = _tstol(p->floppyslots[dr].dfxsubtypeid);
+				const TCHAR *name = _tcschr(p->floppyslots[dr].dfxsubtypeid, ':');
+				if (name) {
+					name++;
+					for (int i = 0; i < bridgeprofiles.size(); i++) {
+						FloppyBridgeAPI::FloppyBridgeProfileInformation fbpi = bridgeprofiles.at(i);
+						if (fbpi.profileID == id && !_tcscmp(fbpi.name, name)) {
+							bridge = FloppyBridgeAPI::createDriverFromProfileID(id);
+							break;
+						}
 					}
-					xfree(a);
-				}
-				if (!bridge) {
-					const TCHAR *name = _tcschr(p->floppyslots[dr].dfxsubtypeid, ':');
-					if (name) {
-						int id = _tstol(p->floppyslots[dr].dfxsubtypeid);
-						name++;
+					if (!bridge) {
 						for (int i = 0; i < bridgeprofiles.size(); i++) {
 							FloppyBridgeAPI::FloppyBridgeProfileInformation fbpi = bridgeprofiles.at(i);
-							if (fbpi.profileID == id && !_tcscmp(fbpi.name, name)) {
-								bridge = FloppyBridgeAPI::createDriverFromProfileID(id);
+							if (!_tcscmp(fbpi.name, name)) {
+								bridge = FloppyBridgeAPI::createDriverFromProfileID(fbpi.profileID);
 								break;
 							}
 						}
-						if (!bridge) {
-							for (int i = 0; i < bridgeprofiles.size(); i++) {
-								FloppyBridgeAPI::FloppyBridgeProfileInformation fbpi = bridgeprofiles.at(i);
-								if (!_tcscmp(fbpi.name, name)) {
-									bridge = FloppyBridgeAPI::createDriverFromProfileID(fbpi.profileID);
-									break;
-								}
-							}
-						}
 					}
 				}
-				if (!bridge && p->floppyslots[dr].dfxsubtypeid[0]) {
-					int id = _tstol(p->floppyslots[dr].dfxsubtypeid);
+				if (!bridge) {
 					bridge = FloppyBridgeAPI::createDriverFromProfileID(id);
 				}
 				if (bridge) {
@@ -5402,7 +5353,6 @@ static void floppybridge_init2(struct uae_prefs *p)
 			floppy[dr].bridge = NULL;
 			bridge_driver[dr] = NULL;
 		}
-
 	}
 }
 
@@ -5440,7 +5390,9 @@ void DISK_init (void)
 #endif
 	if (disk_empty (0))
 		write_log (_T("No disk in drive 0.\n"));
+#ifdef AMAX
 	amax_init ();
+#endif
 }
 
 void DISK_reset (void)
@@ -5493,7 +5445,7 @@ static void abrcheck(struct diskinfo *di)
 		for (int i = 0; abr_files[i] && !error; i++) {
 			get_plugin_path(path, sizeof(path) / sizeof(TCHAR), _T("abr"));
 			_tcscat(path, abr_files[i]);
-			FILE *f = _tfopen(path, _T("rb"));
+			FILE *f = fopen(path, _T("rb"));
 			if (f) {
 				tinyxml2::XMLError err = abr_xml[i].LoadFile(f);
 				if (err != XML_SUCCESS) {

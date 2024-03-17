@@ -45,10 +45,13 @@
 #include "enforcer.h"
 #endif
 #include "threaddep/thread.h"
+#ifdef WITH_LUA
 #include "luascript.h"
+#endif
+#include "crc32.h"
 #include "devices.h"
 #include "rommgr.h"
-#include "specialmonitors.h"
+//#include "specialmonitors.h"
 
 #define BPL_ERASE_TEST 0
 
@@ -5745,10 +5748,11 @@ static void decide_sprites2(int start, int end, int *countp, int *nrs, int *posn
 		if (sprxp < 0) {
 			continue;
 		}
-
+#ifdef DEBUGGER
 		if (!((debug_sprite_mask & magic_sprite_mask) & (1 << i))) {
 			continue;
 		}
+#endif
 
 		if (!spr[i].armed) {
 			continue;
@@ -5868,7 +5872,7 @@ static void decide_sprites(int hpos, bool quick, bool halfcycle = false)
 
 		for (int i = 0; i < count; i++) {
 			int nr = nrs[i] & (MAX_SPRITES - 1);
-			struct sprite *s = &spr[nr];
+			struct sprite* s = &spr[nr];
 
 			// ECS Denise weird behavior in shres
 			if (s->ecs_denise_hires && !(bplcon0d & 0x40)) {
@@ -6888,7 +6892,7 @@ void compute_framesync(void)
 			if (isvsync_chipset ()) {
 				if (!currprefs.gfx_variable_sync) {
 					if (cr->index == CHIPSET_REFRESH_PAL || cr->index == CHIPSET_REFRESH_NTSC) {
-						if ((fabs(vblank_hz - 50.0f) < 1 || fabs(vblank_hz - 60.0f) < 1 || fabs(vblank_hz - 100.0) < 1 || fabs(vblank_hz - 120.0f) < 1) && currprefs.gfx_apmode[0].gfx_vsync == 2 && currprefs.gfx_apmode[0].gfx_fullscreen > 0) {
+						if ((fabs(vblank_hz - 50.0f) < 1 || fabs(vblank_hz - 60.0f) < 1 || fabs(vblank_hz - 100.0f) < 1 || fabs(vblank_hz - 120.0f) < 1) && currprefs.gfx_apmode[0].gfx_vsync == 2 && currprefs.gfx_apmode[0].gfx_fullscreen > 0) {
 							vsync_switchmode(0, (int)vblank_hz);
 						}
 					}
@@ -7089,6 +7093,11 @@ static void init_beamcon0(bool fakehz)
 		bemcon0_vsync_mask = BEAMCON0_VARVSYEN;
 	}
 
+#ifdef AMIBERRY // Don't change vblank_hz when opening P96 screens
+	if (picasso_is_active(0)) {
+		isntsc = currprefs.ntscmode ? 1 : 0;
+	}
+#endif
 	float clk = (float)(currprefs.ntscmode ? CHIPSET_CLOCK_NTSC : CHIPSET_CLOCK_PAL);
 	if (!isntsc) {
 		maxvpos = MAXVPOS_PAL;
@@ -9481,9 +9490,9 @@ static void DDFSTOP(int hpos, uae_u16 v)
 static void FMODE(int hpos, uae_u16 v)
 {
 	if (!aga_mode) {
-		if (currprefs.monitoremu) {
-			specialmonitor_store_fmode(vpos, hpos, v);
-		}
+		//if (currprefs.monitoremu) {
+		//	specialmonitor_store_fmode(vpos, hpos, v);
+		//}
 		fmode_saved = v;
 		v = 0;
 	}
@@ -10196,10 +10205,11 @@ static void COLOR_WRITE(int hpos, uae_u16 v, int num)
 
 	} else {
 #endif
-		if (ecs_denise) {
-			color_regs_genlock[num] = v >> 15;
+		v &= 0x8fff;
+		if (!ecs_denise) {
+			v &= 0xfff;
 		}
-		v &= 0xfff;
+		color_regs_genlock[num] = v >> 15;
 		if (num && v == 0) {
 			colzero = true;
 		}
@@ -11995,7 +12005,7 @@ static bool framewait(void)
 				if (vsyncwaittime - curr_time <= 0 || vsyncwaittime - curr_time > 2 * vsynctimebase) {
 					break;
 				}
-				rtg_vsynccheck ();
+				//rtg_vsynccheck (); //no-op
 				if (cpu_sleep_millis(1) < 0) {
 					curr_time = read_processor_time();
 					break;
@@ -12040,13 +12050,13 @@ static bool framewait(void)
 				float v = rpt_vsync(clockadjust) / (syncbase / 1000.0f);
 				if (v >= -FRAMEWAIT_MIN_MS)
 					break;
-				rtg_vsynccheck();
+				//rtg_vsynccheck(); //no-op
 				maybe_process_pull_audio();
 				if (cpu_sleep_millis(1) < 0)
 					break;
 			}
 			while (rpt_vsync(clockadjust) < 0) {
-				rtg_vsynccheck();
+				//rtg_vsynccheck(); //no-op
 				if (audio_is_pull_event()) {
 					maybe_process_pull_audio();
 					break;
@@ -13168,6 +13178,7 @@ static void hsync_handler_pre(bool onvsync)
 
 // low latency vsync
 
+#ifndef AMIBERRY
 #define LLV_DEBUG 0
 
 static bool sync_timeout_check(frame_time_t max)
@@ -13827,6 +13838,7 @@ static bool linesync_beam_vrr(void)
 
 	return input_read_done;
 }
+#endif
 
 // called when extra CPU wait is done
 void vsync_event_done(void)
@@ -13835,19 +13847,20 @@ void vsync_event_done(void)
 		events_reset_syncline();
 		return;
 	}
-	if (currprefs.gfx_display_sections <= 1) {
-		if (vsync_vblank >= 85)
-			linesync_beam_single_dual();
-		else
-			linesync_beam_single_single();
-	} else {
-		if (currprefs.gfx_variable_sync)
-			linesync_beam_vrr();
-		else if (vsync_vblank >= 85)
-			linesync_beam_multi_dual();
-		else
-			linesync_beam_multi_single();
-	}
+	//if (currprefs.gfx_display_sections <= 1) {
+	//	if (vsync_vblank >= 85)
+	//		linesync_beam_single_dual();
+	//	else
+	//		linesync_beam_single_single();
+	//}
+	//else {
+	//	if (currprefs.gfx_variable_sync)
+	//		linesync_beam_vrr();
+	//	else if (vsync_vblank >= 85)
+	//		linesync_beam_multi_dual();
+	//	else
+	//		linesync_beam_multi_single();
+	//}
 }
 
 static void check_vblank_copjmp(uae_u32 v)
@@ -14157,19 +14170,19 @@ static void hsync_handler_post(bool onvsync)
 
 	} else if (isvsync_chipset() < 0) {
 
-		if (currprefs.gfx_display_sections <= 1) {
-			if (vsync_vblank >= 85)
-				input_read_done = linesync_beam_single_dual();
-			else
-				input_read_done = linesync_beam_single_single();
-		} else {
-			if (currprefs.gfx_variable_sync)
-				input_read_done = linesync_beam_vrr();
-			else if (vsync_vblank >= 85)
-				input_read_done = linesync_beam_multi_dual();
-			else
-				input_read_done = linesync_beam_multi_single();
-		}
+		//if (currprefs.gfx_display_sections <= 1) {
+		//	if (vsync_vblank >= 85)
+		//		input_read_done = linesync_beam_single_dual();
+		//	else
+		//		input_read_done = linesync_beam_single_single();
+		//} else {
+		//	if (currprefs.gfx_variable_sync)
+		//		input_read_done = linesync_beam_vrr();
+		//	else if (vsync_vblank >= 85)
+		//		input_read_done = linesync_beam_multi_dual();
+		//	else
+		//		input_read_done = linesync_beam_multi_single();
+		//}
 
 	} else if (!currprefs.cpu_thread && !cpu_sleepmode && currprefs.m68k_speed < 0 && !currprefs.cpu_memory_cycle_exact) {
 
@@ -14434,7 +14447,9 @@ void custom_reset(bool hardreset, bool keyboardreset)
 	target_reset();
 	devices_reset(hardreset);
 	write_log(_T("Reset at %08X. Chipset mask = %08X\n"), M68K_GETPC, currprefs.chipset_mask);
+#ifdef DEBUGGER
 	memory_map_dump();
+#endif
 
 	bool ntsc = currprefs.ntscmode;
 
@@ -14604,7 +14619,7 @@ void custom_reset(bool hardreset, bool keyboardreset)
 		}
 	}
 
-	specialmonitor_reset();
+	//specialmonitor_reset();
 
 	unset_special (~(SPCFLAG_BRK | SPCFLAG_MODE_CHANGE));
 
@@ -14870,13 +14885,13 @@ addrbank custom_bank = {
 
 static uae_u32 REGPARAM2 custom_wgeti (uaecptr addr)
 {
-	if (currprefs.cpu_model >= 68020 && !currprefs.cpu_compatible)
+	if (currprefs.cpu_model >= 68020)
 		return dummy_wgeti (addr);
 	return custom_wget (addr);
 }
 static uae_u32 REGPARAM2 custom_lgeti (uaecptr addr)
 {
-	if (currprefs.cpu_model >= 68020 && !currprefs.cpu_compatible)
+	if (currprefs.cpu_model >= 68020)
 		return dummy_lgeti (addr);
 	return custom_lget (addr);
 }
@@ -15235,7 +15250,7 @@ static int REGPARAM2 custom_wput_1 (int hpos, uaecptr addr, uae_u32 value, int n
 	case 0x1A4: case 0x1A6: case 0x1A8: case 0x1AA: case 0x1AC: case 0x1AE:
 	case 0x1B0: case 0x1B2: case 0x1B4: case 0x1B6: case 0x1B8: case 0x1BA:
 	case 0x1BC: case 0x1BE:
-		COLOR_WRITE(hpos, value & 0x8FFF, (addr & 0x3E) / 2);
+		COLOR_WRITE(hpos, value & 0xFFF, (addr & 0x3E) / 2);
 		break;
 	case 0x120: case 0x124: case 0x128: case 0x12C:
 	case 0x130: case 0x134: case 0x138: case 0x13C:
@@ -15489,8 +15504,8 @@ uae_u8 *restore_custom(uae_u8 *src)
 	RW;						/* 004 VPOSR */
 	RW;						/* 006 VHPOSR */
 	RW;						/* 008 DSKDATR (dummy register) */
-	JOYSET(0, RW);			/* 00A JOY0DAT */
-	JOYSET(1, RW);			/* 00C JOY1DAT */
+	JOYSET(0, RW);		/* 00A JOY0DAT */
+	JOYSET(1, RW);		/* 00C JOY1DAT */
 	clxdat = RW;			/* 00E CLXDAT */
 	RW;						/* 010 ADKCONR */
 	RW;						/* 012 POT0DAT* */

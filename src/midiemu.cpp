@@ -21,26 +21,26 @@ static int midi_emu_freq;
 int midi_emu;
 
 static const TCHAR *cm32lctl[] = {
-	_T("cm32l_control"),
-	_T("ctrl_cm32l"),
-	_T("ctrl_cm32ln_1_00"),
-	_T("ctrl_cm32l_1_02"),
-	_T("ctrl_cm32l_1_00"),
-	NULL
+		_T("cm32l_control"),
+		_T("ctrl_cm32l"),
+		_T("ctrl_cm32ln_1_00"),
+		_T("ctrl_cm32l_1_02"),
+		_T("ctrl_cm32l_1_00"),
+		NULL
 };
 static const TCHAR *mt32ctl[] = {
-	_T("mt32_control"),
-	_T("ctrl_mt32"),
-	_T("ctrl_mt32_1_07"),
-	_T("ctrl_mt32_1_06"),
-	_T("ctrl_mt32_1_05"),
-	_T("ctrl_mt32_1_04"),
-	_T("ctrl_mt32_bluer"),
-	_T("ctrl_mt32_2_04"),
-	_T("ctrl_mt32_2_07"),
-	_T("ctrl_mt32_2_06"),
-	_T("ctrl_mt32_2_03"),
-	NULL
+		_T("mt32_control"),
+		_T("ctrl_mt32"),
+		_T("ctrl_mt32_1_07"),
+		_T("ctrl_mt32_1_06"),
+		_T("ctrl_mt32_1_05"),
+		_T("ctrl_mt32_1_04"),
+		_T("ctrl_mt32_bluer"),
+		_T("ctrl_mt32_2_04"),
+		_T("ctrl_mt32_2_07"),
+		_T("ctrl_mt32_2_06"),
+		_T("ctrl_mt32_2_03"),
+		NULL
 };
 
 static bool check_rom(const TCHAR *path, const TCHAR *name)
@@ -87,11 +87,11 @@ static bool load_rom(const TCHAR *path, const TCHAR *name)
 static void midi_emu_add_roms(void)
 {
 	TCHAR path[MAX_DPATH];
-	fetch_rompath(path, sizeof(path) / sizeof(TCHAR));
-	_tcscat(path, _T("mt32-roms\\"));
-	if (!my_existsdir(path)) {
-		_tcscpy(path, _T("c:\\mt32-rom-data\\"));
-	}
+	get_rom_path(path, sizeof(path) / sizeof(TCHAR));
+	_tcscat(path, _T("mt32-roms/"));
+//	if (!my_existsdir(path)) {
+//		_tcscpy(path, _T("c:\\mt32-rom-data\\"));
+//	}
 	if (!my_existsdir(path)) {
 		write_log(_T("mt32emu: rom path missing\n"));
 		return;
@@ -132,11 +132,11 @@ bool midi_emu_available(const TCHAR *id)
 		return false;
 	}
 
-	fetch_rompath(path, sizeof(path) / sizeof(TCHAR));
-	_tcscat(path, _T("mt32-roms\\"));
-	if (!my_existsdir(path)) {
-		_tcscpy(path, _T("C:\\mt32-rom-data\\"));
-	}
+	get_rom_path(path, sizeof(path) / sizeof(TCHAR));
+	_tcscat(path, _T("mt32-roms/"));
+//	if (!my_existsdir(path)) {
+//		_tcscpy(path, _T("C:\\mt32-rom-data\\"));
+//	}
 	if (!my_existsdir(path)) {
 		return false;
 	}
@@ -219,7 +219,8 @@ int midi_emu_open(const TCHAR *id)
 	}
 	const char *s = mt32emu_get_library_version_string();
 	write_log("mt32emu version: %s\n", s);
-	mt32context = mt32emu_create_context((mt32emu_report_handler_i)NULL, NULL);
+	mt32emu_report_handler_i handler;
+	mt32context = mt32emu_create_context(handler, NULL);
 	if (!mt32context) {
 		write_log("mt32emu_create_context() failed\n");
 		return 0;
@@ -250,11 +251,8 @@ void midi_emu_reopen(void)
 {
 	if (midi_emu) {
 		midi_emu_close();
-		if (currprefs.win32_midioutdev >= 0) {
-			TCHAR *name = midioutportinfo[currprefs.win32_midioutdev]->name;
-			if (!_tcsncmp(name, _T("Munt "), 5)) {
-				midi_emu_open(name);
-			}
+		if (currprefs.midioutdev[0]) {
+			midi_emu_open(currprefs.midioutdev);
 		}
 	}
 }

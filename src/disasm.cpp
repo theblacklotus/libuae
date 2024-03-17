@@ -113,18 +113,18 @@ static const TCHAR *disasm_lc_hex2(const TCHAR *s, bool noprefix)
 			}
 			const TCHAR *s2 = _tcschr(tmp, '%');
 			if (s2) {
-				int len = uaetcslen(disasm_hexprefix);
+				int len = _tcslen(disasm_hexprefix);
 				if (s2 > tmp && s2[-1] == '$') {
 					len--;
 					s2--;
 				}
 				if (len < 0) {
-					memmove(tmp + (s2 - tmp), tmp + (s2 - tmp) - len, (uaetcslen(tmp + (s2 - tmp) - len) + 1) * sizeof(TCHAR));
+					memmove(tmp + (s2 - tmp), tmp + (s2 - tmp) - len, (_tcslen(tmp + (s2 - tmp) - len) + 1) * sizeof(TCHAR));
 				} else {
 					if (len > 0) {
-						memmove(tmp + (s2 - tmp) + len, s2, (uaetcslen(s2) + 1) * sizeof(TCHAR));
+						memmove(tmp + (s2 - tmp) + len, s2, (_tcslen(s2) + 1) * sizeof(TCHAR));
 					}
-					memcpy(tmp + (s2 - tmp), disasm_hexprefix, uaetcslen(disasm_hexprefix) * sizeof(TCHAR));
+					memcpy(tmp + (s2 - tmp), disasm_hexprefix, _tcslen(disasm_hexprefix) * sizeof(TCHAR));
 				}
 			}
 			return tmp;
@@ -204,7 +204,7 @@ static void showea_val(TCHAR *buffer, uae_u16 opcode, uaecptr addr, int size)
 	struct instr *table = &table68k[opcode];
 
 #ifndef CPU_TESTER
-#if UAE
+#ifdef UAE
 	if (addr >= 0xe90000 && addr < 0xf00000)
 		goto skip;
 	if (addr >= 0xdff000 && addr < 0xe00000)
@@ -698,7 +698,7 @@ uaecptr ShowEA(void *f, uaecptr pc, uae_u16 opcode, int reg, amodes mode, wordsi
 		break;
 	}
 	if (buf == NULL)
-		f_out (f, _T("%s"), buffer);
+		f_out (stdout, _T("%s"), buffer);
 	else
 		_tcscat (buf, buffer);
 	if (eaddr)
@@ -1393,7 +1393,7 @@ int m68k_asm(TCHAR *sline, uae_u16 *out, uaecptr pc)
 	int quick = 0;
 	bool immrelpc = false;
 
-	if (uaetcslen(sline) > 100)
+	if (_tcslen(sline) > 100)
 		return -1;
 
 	srcea[0] = dstea[0] = 0;
@@ -1414,7 +1414,7 @@ int m68k_asm(TCHAR *sline, uae_u16 *out, uaecptr pc)
 	}
 	*p = 0;
 
-	to_upper(line, uaetcslen(line));
+	to_upper(line, _tcslen(line));
 
 	p = line;
 	while (*p && *p != ' ')
@@ -1426,7 +1426,7 @@ int m68k_asm(TCHAR *sline, uae_u16 *out, uaecptr pc)
 	}
 	_tcscpy(ins, line);
 	
-	if (uaetcslen(ins) == 0)
+	if (_tcslen(ins) == 0)
 		return 0;
 
 	int size = 1;
@@ -1508,7 +1508,7 @@ int m68k_asm(TCHAR *sline, uae_u16 *out, uaecptr pc)
 	}
 	
 	if (dmode == Areg) {
-		int l = uaetcslen(ins);
+		int l = _tcslen(ins);
 		if (l <= 2)
 			return -1;
 		TCHAR last = ins[l- 1];
@@ -1535,9 +1535,9 @@ int m68k_asm(TCHAR *sline, uae_u16 *out, uaecptr pc)
 	bool fp = ins[0] == 'F';
 	int tsize = size;
 
-	if (ins[uaetcslen(ins) - 1] == 'Q' && uaetcslen(ins) > 3 && !fp) {
+	if (ins[_tcslen(ins) - 1] == 'Q' && _tcslen(ins) > 3 && !fp) {
 		quick = 1;
-		ins[uaetcslen(ins) - 1] = 0;
+		ins[_tcslen(ins) - 1] = 0;
 		if (inssize < 0)
 			tsize = 2;
 	}
@@ -2469,12 +2469,12 @@ uae_u32 m68k_disasm_2(TCHAR *buf, int bufsize, uaecptr pc, uae_u16 *bufpc, int b
 			TCHAR segout[256];
 			if (debugmem_get_symbol(segpc, segout, sizeof(segout) / sizeof(TCHAR))) {
 				_tcscat(segout, _T(":\n"));
-				if (bufsize > uaetcslen(segout)) {
-					memmove(symbolpos + uaetcslen(segout), symbolpos, (uaetcslen(symbolpos) + 1) * sizeof(TCHAR));
-					memcpy(symbolpos, segout, uaetcslen(segout) * sizeof(TCHAR));
-					bufsize -= uaetcslen(segout);
-					buf += uaetcslen(segout);
-					symbolpos += uaetcslen(segout);
+				if (bufsize > _tcslen(segout)) {
+					memmove(symbolpos + _tcslen(segout), symbolpos, (_tcslen(symbolpos) + 1) * sizeof(TCHAR));
+					memcpy(symbolpos, segout, _tcslen(segout) * sizeof(TCHAR));
+					bufsize -= _tcslen(segout);
+					buf += _tcslen(segout);
+					symbolpos += _tcslen(segout);
 				}
 			}
 		}

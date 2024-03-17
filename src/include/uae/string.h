@@ -4,6 +4,8 @@
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
+#include <SDL.h>
+
 #include "uae/types.h"
 #include <string.h>
 
@@ -18,51 +20,53 @@
 #ifdef _WIN32
 /* Using the real _tcs* functions */
 #else
-#define _istdigit isdigit
-#define _istspace isspace
+#define _istxdigit isxdigit
+#define _istdigit SDL_isdigit
+#define _istspace SDL_isspace
 #define _istupper isupper
-#define _sntprintf snprintf
+#define _sntprintf SDL_snprintf
 #define _stprintf sprintf
-#define _strtoui64 strtoll
+#define _strtoui64 SDL_strtoll
 #define _tcscat strcat
-#define _tcschr strchr
-#define _tcscmp strcmp
+#define _tcschr SDL_strchr
+#define _tcscmp SDL_strcmp
 #define _tcscpy strcpy
 #define _tcscspn strcspn
-#define _tcsdup strdup
+#define _tcsdup SDL_strdup
 #define _tcsftime strftime
 #define _tcsftime strftime
 #define _tcsicmp strcasecmp
-#define _tcslen strlen
+#define _tcslen SDL_strlen
+#define uaestrlen SDL_strlen
 #define _tcsncat strncat
-#define _tcsncmp strncmp
+#define _tcsncmp SDL_strncmp
 #define _tcsncpy strncpy
-#define _tcsnicmp strncasecmp
-#define _tcsrchr strrchr
+#define _tcsnicmp SDL_strncasecmp
+#define _tcsrchr SDL_strrchr
 #define _tcsspn strspn
-#define _tcsstr strstr
-#define _tcstod strtod
+#define _tcsstr SDL_strstr
+#define _tcstod SDL_strtod
 #define _tcstok strtok
-#define _tcstol strtol
-#define _tcstoul strtoul 
-#define _totlower tolower
-#define _totupper toupper
+#define _tcstol SDL_strtol
+#define _tcstoul SDL_strtoul 
+#define _totlower SDL_tolower
+#define _totupper SDL_toupper
 #define _tprintf printf
-#define _tstof atof
+#define _tstof SDL_atof
 #define _tstoi64 atoll
-#define _tstoi atoi
+#define _tstoi SDL_atoi
 #define _tstol atol
-#define _vsnprintf vsnprintf
-#define _vsntprintf vsnprintf
+#define _vsnprintf SDL_vsnprintf
+#define _vsntprintf SDL_vsnprintf
 #endif
 
-static inline size_t uae_tcslcpy(TCHAR *dst, const TCHAR *src, size_t size)
+static size_t uae_tcslcpy(char *dst, const TCHAR *src, size_t size)
 {
 	if (size == 0) {
 		return 0;
 	}
-	size_t src_len = _tcslen(src);
-	size_t cpy_len = src_len;
+	const auto src_len = _tcslen(src);
+	auto cpy_len = src_len;
 	if (cpy_len >= size) {
 		cpy_len = size - 1;
 	}
@@ -71,13 +75,13 @@ static inline size_t uae_tcslcpy(TCHAR *dst, const TCHAR *src, size_t size)
 	return src_len;
 }
 
-static inline size_t uae_strlcpy(char *dst, const char *src, size_t size)
+static size_t uae_strlcpy(char *dst, const char *src, size_t size)
 {
 	if (size == 0) {
 		return 0;
 	}
-	size_t src_len = strlen(src);
-	size_t cpy_len = src_len;
+	const auto src_len = strlen(src);
+	auto cpy_len = src_len;
 	if (cpy_len >= size) {
 		cpy_len = size - 1;
 	}

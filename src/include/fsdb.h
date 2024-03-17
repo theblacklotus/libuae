@@ -70,53 +70,47 @@ struct virtualfilesysobject
 
 /* AmigaOS "keys" */
 typedef struct a_inode_struct {
-#ifdef AINO_DEBUG
-    uae_u32 checksum1;
-#endif
-    /* Circular list of recycleable a_inodes.  */
-    struct a_inode_struct *next, *prev;
-    /* This a_inode's relatives in the directory structure.  */
-    struct a_inode_struct *parent;
-    struct a_inode_struct *child, *sibling;
-    /* AmigaOS name, and host OS name.  The host OS name is a full path, the
-     * AmigaOS name is relative to the parent.  */
-    TCHAR *aname;
-    TCHAR *nname;
-    /* AmigaOS file comment, or NULL if file has none.  */
-    TCHAR *comment;
-    /* AmigaOS protection bits.  */
-    int amigaos_mode;
-    /* Unique number for identification.  */
-    uae_u32 uniq;
-    /* For a directory that is being ExNext()ed, the number of child ainos
-       which must be kept locked in core.  */
-    unsigned int locked_children;
-    /* How many ExNext()s are going on in this directory?  */
-    unsigned int exnext_count;
-    /* AmigaOS locking bits.  */
-    int shlock;
-    long db_offset;
-    unsigned int dir:1;
-    unsigned int softlink:2;
-    unsigned int elock:1;
-    /* Nonzero if this came from an entry in our database.  */
-    unsigned int has_dbentry:1;
-    /* Nonzero if this will need an entry in our database.  */
-    unsigned int needs_dbentry:1;
-    /* This a_inode possibly needs writing back to the database.  */
-    unsigned int dirty:1;
-    /* If nonzero, this represents a deleted file; the corresponding
-     * entry in the database must be cleared.  */
-    unsigned int deleted:1;
-    /* target volume flag */
-    unsigned int volflags;
-    /* not equaling unit.mountcount -> not in this volume */
-    unsigned int mountcount;
+  /* Circular list of recycleable a_inodes.  */
+  struct a_inode_struct *next, *prev;
+  /* This a_inode's relatives in the directory structure.  */
+  struct a_inode_struct *parent;
+  struct a_inode_struct *child, *sibling;
+  /* AmigaOS name, and host OS name.  The host OS name is a full path, the
+   * AmigaOS name is relative to the parent.  */
+  TCHAR *aname;
+  TCHAR *nname;
+  /* AmigaOS file comment, or NULL if file has none.  */
+  TCHAR *comment;
+  /* AmigaOS protection bits.  */
+  int amigaos_mode;
+  /* Unique number for identification.  */
+  uae_u32 uniq;
+  /* For a directory that is being ExNext()ed, the number of child ainos
+	 which must be kept locked in core.  */
+	unsigned int locked_children;
+	/* How many ExNext()s are going on in this directory?  */
+	unsigned int exnext_count;
+	/* AmigaOS locking bits.  */
+	int shlock;
+	long db_offset;
+	unsigned int dir:1;
+	unsigned int softlink:2;
+	unsigned int elock:1;
+	/* Nonzero if this came from an entry in our database.  */
+	unsigned int has_dbentry:1;
+	/* Nonzero if this will need an entry in our database.  */
+	unsigned int needs_dbentry:1;
+	/* This a_inode possibly needs writing back to the database.  */
+	unsigned int dirty:1;
+	/* If nonzero, this represents a deleted file; the corresponding
+	 * entry in the database must be cleared.  */
+	unsigned int deleted:1;
+	/* target volume flag */
+	unsigned int volflags;
+	/* not equaling unit.mountcount -> not in this volume */
+	unsigned int mountcount;
 	uae_u64 uniq_external;
 	struct virtualfilesysobject *vfso;
-#ifdef AINO_DEBUG
-    uae_u32 checksum2;
-#endif
 } a_inode;
 
 extern TCHAR *nname_begin (TCHAR *);
@@ -126,13 +120,13 @@ extern TCHAR *build_aname (const TCHAR *d, const TCHAR *n);
 
 /* Filesystem-independent functions.  */
 extern void fsdb_clean_dir (a_inode *);
-extern TCHAR *fsdb_search_dir (const TCHAR *dirname, TCHAR *rel, TCHAR **relalt);
+extern TCHAR *fsdb_search_dir (const TCHAR *dirname, TCHAR *rel);
 extern void fsdb_dir_writeback (a_inode *);
 extern int fsdb_used_as_nname (a_inode *base, const TCHAR *);
 extern a_inode *fsdb_lookup_aino_aname (a_inode *base, const TCHAR *);
 extern a_inode *fsdb_lookup_aino_nname (a_inode *base, const TCHAR *);
 extern int fsdb_exists (const TCHAR *nname);
-extern int same_aname (const TCHAR *an1, const TCHAR *an2);
+extern int same_aname(const char* an1, const char* an2);
 
 /* Filesystem-dependent functions.  */
 extern int fsdb_name_invalid (a_inode *, const TCHAR *n);
@@ -153,12 +147,11 @@ extern int my_readdir (struct my_opendir_s*, TCHAR*);
 
 extern int my_rmdir (const TCHAR*);
 extern int my_mkdir (const TCHAR*);
-extern int my_unlink (const TCHAR*, bool);
+extern int my_unlink (const TCHAR*);
 extern int my_rename (const TCHAR*, const TCHAR*);
 extern int my_setcurrentdir (const TCHAR *curdir, TCHAR *oldcur);
 bool my_isfilehidden (const TCHAR *path);
 void my_setfilehidden (const TCHAR *path, bool hidden);
-int my_readonlyfile(const TCHAR *path);
 
 extern struct my_openfile_s *my_open (const TCHAR*, int);
 extern void my_close (struct my_openfile_s*);
@@ -168,8 +161,10 @@ extern unsigned int my_read (struct my_openfile_s*, void*, unsigned int);
 extern unsigned int my_write (struct my_openfile_s*, void*, unsigned int);
 extern int my_truncate (const TCHAR *name, uae_u64 len);
 extern int dos_errno (void);
-extern int my_existsfile (const TCHAR *name);
-extern int my_existsdir (const TCHAR *name);
+extern bool my_existslink(const char* name);
+extern bool my_existsfile (const TCHAR *name);
+extern bool my_existsfile2(const TCHAR* name);
+extern bool my_existsdir (const TCHAR *name);
 extern FILE *my_opentext (const TCHAR*);
 
 extern bool my_stat (const TCHAR *name, struct mystat *ms);
@@ -184,11 +179,6 @@ extern int my_issamevolume(const TCHAR *path1, const TCHAR *path2, TCHAR *path);
 extern bool my_issamepath(const TCHAR *path1, const TCHAR *path2);
 extern bool my_createsoftlink(const TCHAR *path, const TCHAR *target);
 extern bool my_createshortcut(const TCHAR *source, const TCHAR *target, const TCHAR *description);
-extern void makesafefilename(TCHAR*, bool);
-
-extern a_inode *custom_fsdb_lookup_aino_aname (a_inode *base, const TCHAR *aname);
-extern a_inode *custom_fsdb_lookup_aino_nname (a_inode *base, const TCHAR *nname);
-extern int custom_fsdb_used_as_nname (a_inode *base, const TCHAR *nname);
 
 #define MYVOLUMEINFO_READONLY 1
 #define MYVOLUMEINFO_STREAMS 2
@@ -197,5 +187,14 @@ extern int custom_fsdb_used_as_nname (a_inode *base, const TCHAR *nname);
 #define MYVOLUMEINFO_CDFS 16
 
 extern int my_getvolumeinfo (const TCHAR *root);
+extern std::string my_get_sha1_of_file(const char* filepath);
+
+#ifdef AMIBERRY
+char* fsdb_native_path(const char* root_dir, const char* amiga_path);
+void fsdb_get_file_time(a_inode* node, int* days, int* mins, int* ticks);
+int fsdb_set_file_time(a_inode* node, int days, int mins, int ticks);
+int host_errno_to_dos_errno(int err);
+bool copyfile(const char* target, const char* source, bool replace);
+#endif
 
 #endif /* UAE_FSDB_H */

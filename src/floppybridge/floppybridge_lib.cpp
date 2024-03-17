@@ -1,6 +1,6 @@
 /* floppybridge_lib
 *
-* Copyright (C) 2021 Robert Smith (@RobSmithDev)
+* Copyright (C) 2021-2023 Robert Smith (@RobSmithDev)
 * https://amiga.robsmithdev.co.uk
 *
 * This class connects to the external FloppyBridge DLL library rather than
@@ -13,43 +13,19 @@
 * For more details visit <http://unlicense.org>.
 *
 */
+#include "sysconfig.h"
 
 #include "floppybridge_lib.h"
 #include <string>
 #include <codecvt>
 #include <locale>
 #include <algorithm>
+#include <cstring>
+#ifndef _WIN32
+#include <dlfcn.h>
+#endif
 
-
-// Used by BRIDGE_About
-struct BridgeAbout {
-	const char* about;
-	const char* url;
-	unsigned int majorVersion, minorVersion;
-	unsigned int isBeta;
-	unsigned int isUpdateAvailable;
-	unsigned int updateMajorVersion, updateMinorVersion;
-};
-
-// Information about a floppy bridge profile
-struct FloppyBridgeProfileInformationDLL {
-	// Unique ID of this profile
-	unsigned int profileID;
-
-	// Driver Index, incase it's shown on the GUI
-	unsigned int driverIndex;
-
-	// Some basic information
-	FloppyBridgeAPI::BridgeMode bridgeMode;
-	FloppyBridgeAPI::BridgeDensityMode bridgeDensityMode;
-
-	// Profile name
-	char* name;
-
-	// Pointer to the Configuration data for this profile. - Be careful. Assume this pointer is invalid after calling *any* of the *profile* functions apart from getAllProfiles
-	char* profileConfig;
-};
-
+#ifndef AMIBERRY
 #ifdef _WIN32
 #include <Windows.h>
 #ifdef WINUAE
@@ -79,7 +55,6 @@ void* hBridgeDLLHandle = nullptr;
 #endif
 
 
-
 // Bridge library function definitions
 typedef void 			 (CALLING_CONVENSION* _BRIDGE_About)(bool allowCheckForUpdates, BridgeAbout** output);
 typedef unsigned int 	 (CALLING_CONVENSION* _BRIDGE_NumDrivers)(void);
@@ -107,10 +82,10 @@ typedef bool 			 (CALLING_CONVENSION* _BRIDGE_GetConfigString)(BridgeDriverHandl
 typedef bool 			 (CALLING_CONVENSION* _BRIDGE_SetConfigFromString)(BridgeDriverHandle bridgeDriverHandle, char* config);
 typedef bool 			 (CALLING_CONVENSION* _BRIDGE_DriverGetAutoCache)(BridgeDriverHandle bridgeDriverHandle, bool* isAutoCacheMode);
 typedef bool 			 (CALLING_CONVENSION* _BRIDGE_DriverSetAutoCache)(BridgeDriverHandle bridgeDriverHandle, bool isAutoCacheMode);
-typedef bool 			 (CALLING_CONVENSION* _BRIDGE_DriverGetMode)(BridgeDriverHandle bridgeDriverHandle, FloppyBridgeAPI::BridgeMode* bridgeMode);
-typedef bool 			 (CALLING_CONVENSION* _BRIDGE_DriverSetMode)(BridgeDriverHandle bridgeDriverHandle, FloppyBridgeAPI::BridgeMode bridgeMode);
-typedef bool 			 (CALLING_CONVENSION* _BRIDGE_DriverGetDensityMode)(BridgeDriverHandle bridgeDriverHandle, FloppyBridgeAPI::BridgeDensityMode* densityMode);
-typedef bool 			 (CALLING_CONVENSION* _BRIDGE_DriverSetDensityMode)(BridgeDriverHandle bridgeDriverHandle, FloppyBridgeAPI::BridgeDensityMode densityMode);
+typedef bool 			 (CALLING_CONVENSION* _BRIDGE_DriverGetMode)(BridgeDriverHandle bridgeDriverHandle, CommonBridgeTemplate::BridgeMode* bridgeMode);
+typedef bool 			 (CALLING_CONVENSION* _BRIDGE_DriverSetMode)(BridgeDriverHandle bridgeDriverHandle, CommonBridgeTemplate::BridgeMode bridgeMode);
+typedef bool 			 (CALLING_CONVENSION* _BRIDGE_DriverGetDensityMode)(BridgeDriverHandle bridgeDriverHandle, CommonBridgeTemplate::BridgeDensityMode* densityMode);
+typedef bool 			 (CALLING_CONVENSION* _BRIDGE_DriverSetDensityMode)(BridgeDriverHandle bridgeDriverHandle, CommonBridgeTemplate::BridgeDensityMode densityMode);
 typedef bool 			 (CALLING_CONVENSION* _BRIDGE_DriverGetCurrentComPort)(BridgeDriverHandle bridgeDriverHandle, char** comPort);
 typedef bool 			 (CALLING_CONVENSION* _BRIDGE_DriverSetCurrentComPort)(BridgeDriverHandle bridgeDriverHandle, char* comPort);
 typedef bool 			 (CALLING_CONVENSION* _BRIDGE_DriverGetAutoDetectComPort)(BridgeDriverHandle bridgeDriverHandle, bool* autoDetectComPort);
@@ -166,7 +141,9 @@ _BRIDGE_SetProfileConfigFromString BRIDGE_SetProfileConfigFromString = nullptr;
 _BRIDGE_SetProfileName BRIDGE_SetProfileName = nullptr;
 _BRIDGE_CreateNewProfile BRIDGE_CreateNewProfile = nullptr;
 _BRIDGE_DeleteProfile BRIDGE_DeleteProfile = nullptr;
+#ifdef _WIN32
 _BRIDGE_ShowConfigDialog BRIDGE_ShowConfigDialog = nullptr;
+#endif
 _BRIDGE_GetDriverIndex BRIDGE_GetDriverIndex = nullptr;
 _BRIDGE_FreeDriver	BRIDGE_FreeDriver = nullptr;
 _BRIDGE_DriverGetMode	BRIDGE_DriverGetMode = nullptr;
@@ -241,8 +218,10 @@ void prepareBridge() {
 	BRIDGE_EnumComports = (_BRIDGE_EnumComports)GETFUNC(hBridgeDLLHandle, "BRIDGE_EnumComports");
 	BRIDGE_GetDriverInfo = (_BRIDGE_GetDriverInfo)GETFUNC(hBridgeDLLHandle, "BRIDGE_GetDriverInfo");
 	BRIDGE_CreateDriver = (_BRIDGE_CreateDriver)GETFUNC(hBridgeDLLHandle, "BRIDGE_CreateDriver");
-	BRIDGE_GetDriverIndex = (_BRIDGE_GetDriverIndex)GETFUNC(hBridgeDLLHandle, "BRIDGE_GetDriverIndex");	
+	BRIDGE_GetDriverIndex = (_BRIDGE_GetDriverIndex)GETFUNC(hBridgeDLLHandle, "BRIDGE_GetDriverIndex");
+#ifdef _WIN32
 	BRIDGE_ShowConfigDialog = (_BRIDGE_ShowConfigDialog)GETFUNC(hBridgeDLLHandle, "BRIDGE_ShowConfigDialog");
+#endif
 	BRIDGE_Close = (_BRIDGE_Close)GETFUNC(hBridgeDLLHandle, "BRIDGE_Close");
 	BRIDGE_Open = (_BRIDGE_Open)GETFUNC(hBridgeDLLHandle, "BRIDGE_Open");
 	BRIDGE_CreateDriverFromProfileID = (_BRIDGE_CreateDriverFromProfileID)GETFUNC(hBridgeDLLHandle, "BRIDGE_CreateDriverFromProfileID");
@@ -312,7 +291,7 @@ void prepareBridge() {
 #endif
 	}
 }
-
+#endif //AMIBERRY
 
 // character conversions
 using convert_t = std::codecvt_utf8<wchar_t>;
@@ -339,7 +318,7 @@ void _char2TChar(const char* input, TCHAR* output, unsigned maxLength) {
 #ifdef _WIN32
 	strcpy_s(output, maxLength, input);
 #else
-	strcpy_s(output, input);
+	strcpy(output, input);
 #endif
 #endif
 }
@@ -355,10 +334,13 @@ std::vector<std::string> stringListsForProfiles;
 /*********** STATIC FUNCTIONS ************************/
 
 // Returns TRUE if the floppy bridge library has been loaded and is ready to be queried
-const bool FloppyBridgeAPI::isAvailable() {
+bool FloppyBridgeAPI::isAvailable() {
+#ifdef AMIBERRY
+	return true;
+#else
 	prepareBridge();
-
 	return hBridgeDLLHandle != 0;
+#endif
 }
 
 // Populates bridgeInformation with information about the Bridge DLL. This should be called and shown somewhere
@@ -402,7 +384,7 @@ void FloppyBridgeAPI::getDriverList(std::vector<DriverInformation>& driverList) 
 	for (unsigned int index = 0; index < total; index++) {
 		if (BRIDGE_GetDriverInfo(index, &info)) {
 
-			DriverInformation infoOut;
+			DriverInformation infoOut{};
 
 			_char2TChar(info->name, infoOut.name, BRIDGE_STRING_MAX_LENGTH - 1);
 			_char2TChar(info->url, infoOut.url, BRIDGE_STRING_MAX_LENGTH - 1);
@@ -428,7 +410,7 @@ FloppyBridgeAPI* FloppyBridgeAPI::createDriver(unsigned int driverIndex) {
 	return new FloppyBridgeAPI(driverIndex, driverHandle);
 }
 
-// Createw a driver from a config string previously saved.  This will auto-select the driverIndex.
+// Creates a driver from a config string previously saved.  This will auto-select the driverIndex.
 FloppyBridgeAPI* FloppyBridgeAPI::createDriverFromString(const char* config) {
 	if (!isAvailable()) return nullptr;
 
@@ -465,7 +447,7 @@ void FloppyBridgeAPI::enumCOMPorts(std::vector<const TCHAR*>& portList) {
 
 		while (*str) {
 			_char2TChar(str, opString, BRIDGE_STRING_MAX_LENGTH);
-			memoryPortList.push_back(opString);
+			memoryPortList.emplace_back(opString);
 			str += strlen(str) + 1;  // skip pas the null terminator
 		}
 
@@ -504,7 +486,7 @@ FloppyBridgeAPI* FloppyBridgeAPI::createDriverFromProfileID(unsigned int profile
 	return new FloppyBridgeAPI(driverIndex, driverHandle);
 }
 
-// Retreive a list of all of the profiles currently loaded that can be used.
+// Retrieve a list of all of the profiles currently loaded that can be used.
 bool FloppyBridgeAPI::getAllProfiles(std::vector<FloppyBridgeProfileInformation>& profileList) {
 	if (!isAvailable()) return false;
 
@@ -517,7 +499,7 @@ bool FloppyBridgeAPI::getAllProfiles(std::vector<FloppyBridgeProfileInformation>
 	if (!BRIDGE_GetAllProfiles(&profile, &numProfiles)) return false;
 	
 	while (numProfiles) {
-		FloppyBridgeProfileInformation p;
+		FloppyBridgeProfileInformation p{};
 		p.driverIndex = profile->driverIndex;
 		p.profileID = profile->profileID;
 
@@ -531,7 +513,7 @@ bool FloppyBridgeAPI::getAllProfiles(std::vector<FloppyBridgeProfileInformation>
 		profile++;
 	}
 
-	// Just populate the strings.. This was incase vector resizes etc changed memory locations
+	// Just populate the strings.. This was in case vector resizes etc changed memory locations
 	for (size_t pos = 0; pos < profileList.size(); pos++)
 		profileList[pos].profileConfig = stringListsForProfiles[pos].c_str();
 
@@ -575,10 +557,10 @@ bool FloppyBridgeAPI::setProfileConfigFromString(unsigned int profileID, const c
 }
 
 // Updates a profile from the supplied string
-bool FloppyBridgeAPI::setProfileName(unsigned int profileID, const char* config) {
+bool FloppyBridgeAPI::setProfileName(unsigned int profileID, const char* name) {
 	if (!isAvailable()) return false;
 
-	return BRIDGE_SetProfileName(profileID, (char*)config);
+	return BRIDGE_SetProfileName(profileID, (char*)name);
 }
 
 // Deletes a profile by ID.
@@ -589,7 +571,7 @@ bool FloppyBridgeAPI::deleteProfile(unsigned int profileID) {
 }
 
 #ifdef _WIN32
-// Displys the config dialog (modal) for Floppy Bridge profiles.  
+// Displays the config dialog (modal) for Floppy Bridge profiles.  
 // *If* you pass a profile ID, the dialog will jump to editing that profile, or return FALSE if it was not found.
 // Returns FALSE if cancel was pressed
 bool FloppyBridgeAPI::showProfileConfigDialog(HWND hwndParent, unsigned int* profileID) {
@@ -601,7 +583,7 @@ bool FloppyBridgeAPI::showProfileConfigDialog(HWND hwndParent, unsigned int* pro
 
 /*********** CLASS FUNCTIONS ************************/
 
-// Dont call this. You should use the static createDriver member to create it.
+// Don't call this. You should use the static createDriver member to create it.
 FloppyBridgeAPI::FloppyBridgeAPI(unsigned int driverIndex, BridgeDriverHandle handle) : FloppyDiskBridge(), m_handle(handle), m_driverIndex(driverIndex) {
 }
 
@@ -611,49 +593,58 @@ FloppyBridgeAPI::~FloppyBridgeAPI() {
 
 /************** CONFIG RELATED FUNCTIONS *************************************/
 // Returns a pointer to a string containing the current config.  This can be used with setConfigFromString() or createDriverFromString()
-bool FloppyBridgeAPI::getConfigAsString(char** config) {
+bool FloppyBridgeAPI::getConfigAsString(char** config) const
+{
 	return BRIDGE_GetConfigString(m_handle, config);
 }
-// Applies the config to the currently driver.  Returns TRUE if successful.
-bool FloppyBridgeAPI::setConfigFromString(char* config) {
+// Applies the config to the current driver.  Returns TRUE if successful.
+bool FloppyBridgeAPI::setConfigFromString(char* config) const
+{
 	return BRIDGE_SetConfigFromString(m_handle, config);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Return the current bridge mode selected
-bool FloppyBridgeAPI::getBridgeMode(FloppyBridgeAPI::BridgeMode* mode) {
+bool FloppyBridgeAPI::getBridgeMode(CommonBridgeTemplate::BridgeMode* mode) const
+{
 	return BRIDGE_DriverGetMode(m_handle, mode);
 }
 // Set the currently active bridge mode.  This can be set while the bridge is in use
-bool FloppyBridgeAPI::setBridgeMode(BridgeMode newMode) {
+bool FloppyBridgeAPI::setBridgeMode(CommonBridgeTemplate::BridgeMode newMode) const
+{
 	return BRIDGE_DriverSetMode(m_handle, newMode);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Return the current bridge density mode selected
-bool FloppyBridgeAPI::getBridgeDensityMode(FloppyBridgeAPI::BridgeDensityMode* mode) {
+bool FloppyBridgeAPI::getBridgeDensityMode(CommonBridgeTemplate::BridgeDensityMode* mode) const
+{
 	return BRIDGE_DriverGetDensityMode(m_handle, mode);
 }
 // Set the currently active bridge density mode.  This can be set while the bridge is in use
-bool FloppyBridgeAPI::setBridgeDensityMode(BridgeDensityMode newMode) {
+bool FloppyBridgeAPI::setBridgeDensityMode(CommonBridgeTemplate::BridgeDensityMode newMode) const
+{
 	return BRIDGE_DriverSetDensityMode(m_handle, newMode);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // These require ConfigOption_AutoCache bit set in DriverInformation::configOptions
 // Returns if auto-disk caching (while the drive is idle) mode is enabled
-bool FloppyBridgeAPI::getAutoCacheMode(bool* autoCacheMode) {
+bool FloppyBridgeAPI::getAutoCacheMode(bool* autoCacheMode) const
+{
 	return BRIDGE_DriverGetAutoCache(m_handle, autoCacheMode);
 }
 // Sets if auto-disk caching (while the drive is idle) mode is enabled.  This can be set while the bridge is in use
-bool FloppyBridgeAPI::setAutoCacheMode(bool autoCacheMode) {
+bool FloppyBridgeAPI::setAutoCacheMode(bool autoCacheMode) const
+{
 	return BRIDGE_DriverSetAutoCache(m_handle, autoCacheMode);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // These require ConfigOption_ComPort bit set in DriverInformation::configOptions
 // Returns the currently selected COM port.  This port is only used if auto detect com port is false
-bool FloppyBridgeAPI::getComPort(TCharString* comPort) {
+bool FloppyBridgeAPI::getComPort(TCharString* comPort) const
+{
 	char* port = nullptr;
 	if (!BRIDGE_DriverGetCurrentComPort(m_handle, &port)) return false;
 	if (!port) return false;
@@ -662,7 +653,8 @@ bool FloppyBridgeAPI::getComPort(TCharString* comPort) {
 	return true;
 }
 // Sets the com port to use.  This port is only used if auto detect com port is false.
-bool FloppyBridgeAPI::setComPort(TCHAR* comPort) {
+bool FloppyBridgeAPI::setComPort(TCHAR* comPort) const
+{
 	if (!comPort) return false;
 	
 #ifdef _UNICODE
@@ -677,33 +669,39 @@ bool FloppyBridgeAPI::setComPort(TCHAR* comPort) {
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // These require ConfigOption_AutoDetectComport bit set in DriverInformation::configOptions
 // Returns if com port auto-detect is enabled
-bool FloppyBridgeAPI::getComPortAutoDetect(bool* autoDetect) {
+bool FloppyBridgeAPI::getComPortAutoDetect(bool* autoDetect) const
+{
 	return BRIDGE_DriverGetAutoDetectComPort(m_handle, autoDetect);
 }
 // Sets if auto-detect com port should be used
-bool FloppyBridgeAPI::setComPortAutoDetect(bool autoDetect) {
+bool FloppyBridgeAPI::setComPortAutoDetect(bool autoDetect) const
+{
 	return BRIDGE_DriverSetAutoDetectComPort(m_handle, autoDetect);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // These require ConfigOption_DriveABCable bit set in DriverInformation::configOptions
 // Returns if the driver should use a drive connected as Drive B (true) on the cable rather than Drive A (false)
-bool FloppyBridgeAPI::getDriveCableSelection(bool* connectToDriveB) {
+bool FloppyBridgeAPI::getDriveCableSelection(bool* connectToDriveB) const
+{
 	return BRIDGE_DriverGetCable(m_handle, connectToDriveB);
 }
 // Sets if the driver should use a drive connected as Drive B (true) on the cable rather than Drive A (false)
-bool FloppyBridgeAPI::setDriveCableSelection(bool connectToDriveB) {
+bool FloppyBridgeAPI::setDriveCableSelection(bool connectToDriveB) const
+{
 	return BRIDGE_DriverSetCable(m_handle, connectToDriveB);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // These require ConfigOption_SmartSpeed bit set in DriverInformation::configOptions
 // Returns if the driver currently has Smart Speed enabled which can dynamically switch between normal and turbo disk speed without breaking copy protection
-bool FloppyBridgeAPI::getSmartSpeedEnabled(bool* enabled) {
+bool FloppyBridgeAPI::getSmartSpeedEnabled(bool* enabled) const
+{
 	return BRIDGE_DriverGetSmartSpeedEnabled(m_handle, enabled);
 }
 //  Sets if the driver can dynamically switch between normal and turbo disk speed without breaking copy protectionThis can be set while the bridge is in use
-bool FloppyBridgeAPI::setSmartSpeedEnabled(bool enabled) {
+bool FloppyBridgeAPI::setSmartSpeedEnabled(bool enabled) const
+{
 	return BRIDGE_DriverSetSmartSpeedEnabled(m_handle, enabled);
 }
 
@@ -749,7 +747,7 @@ const char* FloppyBridgeAPI::getLastErrorMessage() {
 	_quickw2a(m_error, m_lastErrorAnsi);
 	return m_lastErrorAnsi.c_str();
 #else
-	return m_lastError;
+	return m_error;
 #endif
 }
 const FloppyDiskBridge::BridgeDriver* FloppyBridgeAPI::getDriverInfo() {

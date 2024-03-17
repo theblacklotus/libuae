@@ -444,7 +444,7 @@ int inprec_open (const TCHAR *fname, const TCHAR *statefilename)
 					_tcscpy (savestate_fname, p);
 					break;
 				}
-				fetch_statefilepath (tmp, sizeof tmp / sizeof (TCHAR));
+				get_savestate_path (tmp, sizeof tmp / sizeof (TCHAR));
 				_tcscat (tmp, p);
 				if (zfile_exists (tmp)) {
 					_tcscpy (savestate_fname, tmp);
@@ -509,7 +509,7 @@ bool inprec_prepare_record (const TCHAR *statefilename)
 		if (!s)
 			s = _tcsrchr (changed_prefs.inprecfile, '/');
 		if (s) {
-			fetch_statefilepath (state, sizeof state / sizeof (TCHAR));
+			get_savestate_path (state, sizeof state / sizeof (TCHAR));
 			_tcscat (state, s + 1);
 		} else {
 			_tcscpy (state, changed_prefs.inprecfile);

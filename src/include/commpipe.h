@@ -13,7 +13,7 @@
 
 typedef union {
 	int i;
-	uae_u32 u32;
+	uae_u32 _u32;
 	void *pv;
 } uae_pt;
 
@@ -53,6 +53,15 @@ STATIC_INLINE void destroy_comm_pipe (smp_comm_pipe *p)
 	uae_sem_destroy (&p->lock);
 	uae_sem_destroy (&p->reader_wait);
 	uae_sem_destroy (&p->writer_wait);
+	p->lock = 0;
+	p->reader_wait = 0;
+	p->writer_wait = 0;
+	if(p->size > 0 && p->data != NULL)
+	{
+		free(p->data);
+		p->size = 0;
+		p->data = NULL;
+	}
 }
 
 STATIC_INLINE void maybe_wake_reader (smp_comm_pipe *p, int no_buffer)
@@ -128,7 +137,7 @@ STATIC_INLINE int read_comm_pipe_int_blocking (smp_comm_pipe *p)
 STATIC_INLINE uae_u32 read_comm_pipe_u32_blocking (smp_comm_pipe *p)
 {
 	uae_pt foo = read_comm_pipe_pt_blocking (p);
-	return foo.u32;
+	return foo._u32;
 }
 
 STATIC_INLINE void *read_comm_pipe_pvoid_blocking (smp_comm_pipe *p)
@@ -147,7 +156,7 @@ STATIC_INLINE void write_comm_pipe_int (smp_comm_pipe *p, int data, int no_buffe
 STATIC_INLINE void write_comm_pipe_u32 (smp_comm_pipe *p, int data, int no_buffer)
 {
 	uae_pt foo;
-	foo.u32 = data;
+	foo._u32 = data;
 	write_comm_pipe_pt (p, foo, no_buffer);
 }
 

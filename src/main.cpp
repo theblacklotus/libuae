@@ -6,9 +6,19 @@
 * Copyright 1995 Ed Hanway
 * Copyright 1995, 1996, 1997 Bernd Schmidt
 */
+#include <iostream>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+
+#ifdef USE_OLDGCC
+#include <experimental/filesystem>
+#else
+#include <filesystem>
+#endif
+
 #include "sysconfig.h"
 #include "sysdeps.h"
-#include <assert.h>
 
 #include "options.h"
 #include "threaddep/thread.h"
@@ -37,11 +47,15 @@
 #include "blkdev.h"
 #include "consolehook.h"
 #include "gfxboard.h"
+#ifdef WITH_LUA
 #include "luascript.h"
+#endif
 #include "uaenative.h"
 #include "tabletlibrary.h"
 #include "cpuboard.h"
+#ifdef WITH_PPC
 #include "uae/ppc.h"
+#endif
 #include "devices.h"
 #ifdef JIT
 #include "jit/compemu.h"
@@ -50,25 +64,30 @@
 #ifdef RETROPLATFORM
 #include "rp.h"
 #endif
-#ifdef USE_SDL
-#include "SDL.h"
-#endif
 
+#include <iostream>
+#ifndef __MACH__
+#include <linux/kd.h>
+#endif
+#include <sys/ioctl.h>
+
+#include "fsdb_host.h"
+#include "keyboard.h"
+
+static const char __ver[40] = "$VER: Amiberry v6.2.1 (2024-03-13)";
 long int version = 256 * 65536L * UAEMAJOR + 65536L * UAEMINOR + UAESUBREV;
 
 struct uae_prefs currprefs, changed_prefs;
 int config_changed, config_changed_flags;
 
-bool no_gui = 0, quit_to_gui = 0;
-bool cloanto_rom = 0;
-bool kickstart_rom = 1;
+bool no_gui = false, quit_to_gui = false;
+bool cloanto_rom = false;
+bool kickstart_rom = true;
 bool console_emulation = 0;
 
 struct gui_info gui_data;
 
-TCHAR warning_buffer[256];
-
-TCHAR optionsfile[256];
+static TCHAR optionsfile[MAX_DPATH];
 
 static uae_u32 randseed;
 
@@ -127,27 +146,23 @@ uae_u32 uaesetrandseed(uae_u32 seed)
 
 void my_trim(TCHAR *s)
 {
-	int len;
-	while (uaetcslen(s) > 0 && _tcscspn(s, _T("\t \r\n")) == 0)
-		memmove (s, s + 1, (uaetcslen(s + 1) + 1) * sizeof (TCHAR));
-	len = uaetcslen(s);
-	while (len > 0 && _tcscspn(s + len - 1, _T("\t \r\n")) == 0)
+	while (_tcslen (s) > 0 && _tcscspn (s, _T("\t \r\n")) == 0)
+		memmove (s, s + 1, (_tcslen (s + 1) + 1) * sizeof (TCHAR));
+	int len = _tcslen (s);
+	while (len > 0 && _tcscspn (s + len - 1, _T("\t \r\n")) == 0)
 		s[--len] = '\0';
 }
 
 TCHAR *my_strdup_trim (const TCHAR *s)
 {
-	TCHAR *out;
-	int len;
-
 	if (s[0] == 0)
 		return my_strdup(s);
 	while (_tcscspn(s, _T("\t \r\n")) == 0)
 		s++;
-	len = uaetcslen(s);
+	int len = _tcslen(s);
 	while (len > 0 && _tcscspn(s + len - 1, _T("\t \r\n")) == 0)
 		len--;
-	out = xmalloc(TCHAR, len + 1);
+	auto* out = xmalloc(TCHAR, len + 1);
 	memcpy(out, s, len * sizeof (TCHAR));
 	out[len] = 0;
 	return out;
@@ -251,7 +266,7 @@ void fixup_cpu (struct uae_prefs *p)
 	}
 	if (p->cpu_model >= 68040 && p->address_space_24) {
 		error_log (_T("24-bit address space is not supported with 68040/060 configurations."));
-		p->address_space_24 = 0;
+		p->address_space_24 = false;
 	}
 	if (p->cpu_model < 68020 && p->fpu_model && (p->cpu_compatible || p->cpu_memory_cycle_exact)) {
 		error_log (_T("FPU is not supported with 68000/010 configurations."));
@@ -283,6 +298,7 @@ void fixup_cpu (struct uae_prefs *p)
 		error_log(_T("Threaded CPU mode is not compatible with PPC emulation, More compatible or Cycle Exact modes. CPU type must be 68020 or higher."));
 	}
 
+#ifdef WITH_PPC
 	// 1 = "automatic" PPC config
 	if (p->ppc_mode == 1) {
 		cpuboard_setboard(p,  BOARD_CYBERSTORM, BOARD_CYBERSTORM_SUB_PPC);
@@ -296,6 +312,7 @@ void fixup_cpu (struct uae_prefs *p)
 		if (p->cpuboardmem1.size < 8 * 1024 * 1024)
 			p->cpuboardmem1.size = 8 * 1024 * 1024;
 	}
+#endif
 
 	if (p->cachesize_inhibit) {
 		p->cachesize = 0;
@@ -356,17 +373,6 @@ void fixup_cpu (struct uae_prefs *p)
 #endif
 
 
-#if 0
-	if (p->cpu_cycle_exact && p->m68k_speed < 0 && currprefs.cpu_model <= 68020)
-		p->m68k_speed = 0;
-#endif
-
-#if 0
-	if (p->immediate_blits && p->blitter_cycle_exact) {
-		error_log (_T("Cycle-exact and immediate blitter can't be enabled simultaneously.\n"));
-		p->immediate_blits = false;
-	}
-#endif
 	if (p->immediate_blits && p->waiting_blits) {
 		error_log (_T("Immediate blitter and waiting blits can't be enabled simultaneously.\n"));
 		p->waiting_blits = 0;
@@ -397,16 +403,6 @@ void fixup_cpu (struct uae_prefs *p)
 		error_log(_T("Data cache emulation requires Indirect UAE Boot ROM."));
 	}
 
-#if 0
-	if (p->cachesize && p->cpuboard_type && !cpuboard_jitdirectompatible(p) && !p->comptrustbyte) {
-		error_log(_T("JIT direct is not compatible with emulated Blizzard accelerator boards."));
-		p->comptrustbyte = 1;
-		p->comptrustlong = 1;
-		p->comptrustlong = 1;
-		p->comptrustnaddr = 1;
-	}
-#endif
-
 	// pre-4.4.0 didn't support cpu multiplier in prefetch mode without cycle-exact
 	// set pre-4.4.0 defaults first
 	if (!p->cpu_cycle_exact && p->cpu_compatible && !p->cpu_clock_multiplier && p->config_version) {
@@ -423,8 +419,6 @@ void fixup_cpu (struct uae_prefs *p)
 
 void fixup_prefs (struct uae_prefs *p, bool userconfig)
 {
-	int err = 0;
-
 	built_in_chipset_prefs (p);
 	fixup_cpu (p);
 	cfgfile_compatibility_rtg(p);
@@ -452,97 +446,63 @@ void fixup_prefs (struct uae_prefs *p, bool userconfig)
 	{
 		error_log (_T("Unsupported chipmem size %d (0x%x)."), p->chipmem.size, p->chipmem.size);
 		p->chipmem.size = 0x200000;
-		err = 1;
 	}
 
 	if (p->chipmem.size == 0x180000 && p->cachesize) {
 		error_log(_T("JIT unsupported chipmem size %d (0x%x)."), p->chipmem.size, p->chipmem.size);
 		p->chipmem.size = 0x200000;
-		err = 1;
 	}
 
-	for (int i = 0; i < MAX_RAM_BOARDS; i++) {
-		if ((p->fastmem[i].size & (p->fastmem[i].size - 1)) != 0
-			|| (p->fastmem[i].size != 0 && (p->fastmem[i].size < 0x10000 || p->fastmem[i].size > 0x800000)))
+	for (auto& i : p->fastmem) {
+		if ((i.size & i.size - 1) != 0
+			|| (i.size != 0 && (i.size < 0x10000 || i.size > 0x800000)))
 		{
-			error_log (_T("Unsupported fastmem size %d (0x%x)."), p->fastmem[i].size, p->fastmem[i].size);
-			p->fastmem[i].size = 0;
-			err = 1;
+			error_log (_T("Unsupported fastmem size %d (0x%x)."), i.size, i.size);
+			i.size = 0;
 		}
 	}
 
-#ifdef _WIN32
-	if (p->monitoremu && p->monitoremu_mon > 0) {
-		if (isfullscreen() != 0) {
-			p->monitoremu_mon = 0;
-			error_log(_T("Multi virtual monitor support requires windowed mode."));
+	for (auto& rtgboard : p->rtgboards) {
+		auto* const rbc = &rtgboard;
+		if (rbc->rtgmem_size > max_z3fastmem && rbc->rtgmem_type == GFXBOARD_UAE_Z3)
+		{
+			error_log(
+				_T("Graphics card memory size %d (0x%x) larger than maximum reserved %d (0x%x)."), rbc->rtgmem_size,
+				rbc->rtgmem_size, 0x1000000, 0x1000000);
+			rbc->rtgmem_size = 0x1000000;
 		}
-	}
-#endif
 
-	for (int i = 0; i < MAX_RTG_BOARDS; i++) {
-		struct rtgboardconfig *rbc = &p->rtgboards[i];
-		if (rbc->monitor_id > 0 && p->monitoremu_mon == rbc->monitor_id) {
-			error_log(_T("Video port monitor %d was allocated for graphics card %d."), rbc->monitor_id + 1, i + 1);
-			p->monitoremu_mon = 0;
-		}
-		if (rbc->monitor_id > 0) {
-			if (!p->gfx_api) {
-				rbc->monitor_id = 0;
-				error_log(_T("Multi virtual monitor support requires Direct3D mode."));
-			}
-			if (isfullscreen() > 0) {
-				rbc->monitor_id = 0;
-				error_log(_T("Multi virtual monitor support is not available in fullscreen mode."));
-			}
-		}
-		if (rbc->rtgmem_size > max_z3fastmem && rbc->rtgmem_type == GFXBOARD_UAE_Z3) {
-			error_log (_T("Graphics card %d memory size %d (0x%x) larger than maximum reserved %d (0x%x)."), i + 1, rbc->rtgmem_size, rbc->rtgmem_size, max_z3fastmem, max_z3fastmem);
-			rbc->rtgmem_size = max_z3fastmem;
-			err = 1;
-		}
-		if ((rbc->rtgmem_size & (rbc->rtgmem_size - 1)) != 0 || (rbc->rtgmem_size != 0 && (rbc->rtgmem_size < 0x100000))) {
-			error_log (_T("Unsupported graphics card %d memory size %d (0x%x)."), rbc->rtgmem_size, rbc->rtgmem_size, i + 1);
+		if ((rbc->rtgmem_size & rbc->rtgmem_size - 1) != 0 || (rbc->rtgmem_size != 0 && rbc->rtgmem_size < 0x100000))
+		{
+			error_log(_T("Unsupported graphics card memory size %d (0x%x)."), rbc->rtgmem_size, rbc->rtgmem_size);
 			if (rbc->rtgmem_size > max_z3fastmem)
 				rbc->rtgmem_size = max_z3fastmem;
 			else
 				rbc->rtgmem_size = 0;
-			err = 1;
-		}
-		for (int j = 0; j < MAX_RTG_BOARDS; j++) {
-			struct rtgboardconfig *rbc2 = &p->rtgboards[j];
-			if (j == i)
-				continue;
-			if (rbc->monitor_id > 0 && rbc2->monitor_id == rbc->monitor_id) {
-				rbc2->monitor_id = 0;
-				error_log(_T("Graphics card %d and %d can't use same monitor %d."), i + 1, j + 1);
-			}
 		}
 	}
-	
-	for (int i = 0; i < MAX_RAM_BOARDS; i++) {
-		if ((p->z3fastmem[i].size & (p->z3fastmem[i].size - 1)) != 0 || (p->z3fastmem[i].size != 0 && p->z3fastmem[i].size < 0x100000))
+
+	for (auto& i : p->z3fastmem)
+	{
+		if ((i.size & i.size - 1) != 0 || (i.size != 0 && i.size < 0x100000))
 		{
-			error_log (_T("Unsupported Zorro III fastmem size %d (0x%x)."), p->z3fastmem[i].size, p->z3fastmem[i].size);
-			p->z3fastmem[i].size = 0;
-			err = 1;
+			error_log (_T("Unsupported Zorro III fastmem size %d (0x%x)."), i.size, i.size);
+			i.size = 0;
 		}
 	}
 
 	p->z3autoconfig_start &= ~0xffff;
-	if (p->z3autoconfig_start < 0x1000000)
+	if (p->z3autoconfig_start != 0 && p->z3autoconfig_start < 0x1000000)
 		p->z3autoconfig_start = 0x1000000;
 
 	if (p->z3chipmem.size > max_z3fastmem) {
 		error_log (_T("Zorro III fake chipmem size %d (0x%x) larger than max reserved %d (0x%x)."), p->z3chipmem.size, p->z3chipmem.size, max_z3fastmem, max_z3fastmem);
 		p->z3chipmem.size = max_z3fastmem;
-		err = 1;
 	}
-	if (((p->z3chipmem.size & (p->z3chipmem.size - 1)) != 0 &&  p->z3chipmem.size != 0x18000000 && p->z3chipmem.size != 0x30000000) || (p->z3chipmem.size != 0 && p->z3chipmem.size < 0x100000))
+	if (((p->z3chipmem.size & p->z3chipmem.size - 1) != 0 && p->z3chipmem.size != 0x18000000 && p->z3chipmem.size != 0x30000000) || (p->z3chipmem.size != 0 && p->z3chipmem.size < 0x100000))
 	{
 		error_log (_T("Unsupported 32-bit chipmem size %d (0x%x)."), p->z3chipmem.size, p->z3chipmem.size);
 		p->z3chipmem.size = 0;
-		err = 1;
 	}
 
 	if (p->address_space_24 && (p->z3fastmem[0].size != 0 || p->z3fastmem[1].size != 0 || p->z3fastmem[2].size != 0 || p->z3fastmem[3].size != 0 || p->z3chipmem.size != 0)) {
@@ -554,22 +514,19 @@ void fixup_prefs (struct uae_prefs *p, bool userconfig)
 	if (p->bogomem.size != 0 && p->bogomem.size != 0x80000 && p->bogomem.size != 0x100000 && p->bogomem.size != 0x180000 && p->bogomem.size != 0x1c0000) {
 		error_log (_T("Unsupported bogomem size %d (0x%x)"), p->bogomem.size, p->bogomem.size);
 		p->bogomem.size = 0;
-		err = 1;
 	}
 
 	if (p->bogomem.size > 0x180000 && (p->cs_fatgaryrev >= 0 || p->cs_ide || p->cs_ramseyrev >= 0)) {
 		p->bogomem.size = 0x180000;
-		error_log (_T("Possible Gayle bogomem conflict fixed."));
+		error_log(_T("Possible Gayle bogomem conflict fixed."));
 	}
 	if (p->chipmem.size > 0x200000 && (p->fastmem[0].size > 262144 || p->fastmem[1].size > 262144)) {
 		error_log(_T("You can't use fastmem and more than 2MB chip at the same time."));
 		p->chipmem.size = 0x200000;
-		err = 1;
 	}
 	if (p->bogomem.size == 0x180000 && p->cachesize) {
 		error_log(_T("JIT unsupported bogomem size %d (0x%x)."), p->bogomem.size, p->bogomem.size);
 		p->bogomem.size = 0x100000;
-		err = 1;
 	}
 	if (p->mem25bit.size > 128 * 1024 * 1024 || (p->mem25bit.size & 0xfffff)) {
 		p->mem25bit.size = 0;
@@ -584,13 +541,14 @@ void fixup_prefs (struct uae_prefs *p, bool userconfig)
 		error_log (_T("Unsupported CPU Board RAM size."));
 	}
 
-	for (int i = 0; i < MAX_RTG_BOARDS; i++) {
-		struct rtgboardconfig *rbc = &p->rtgboards[i];
+	for (auto& rtgboard : p->rtgboards)
+	{
+		auto* const rbc = &rtgboard;
 		if (p->chipmem.size > 0x200000 && rbc->rtgmem_size && gfxboard_get_configtype(rbc) == 2) {
 			error_log(_T("You can't use Zorro II RTG and more than 2MB chip at the same time."));
 			p->chipmem.size = 0x200000;
-			err = 1;
 		}
+#ifndef AMIBERRY // custom gfx boards not implemented yet
 		if (rbc->rtgmem_type >= GFXBOARD_HARDWARE) {
 			if (gfxboard_get_vram_min(rbc) > 0 && rbc->rtgmem_size < gfxboard_get_vram_min (rbc)) {
 				error_log(_T("Graphics card memory size %d (0x%x) smaller than minimum hardware supported %d (0x%x)."),
@@ -608,6 +566,7 @@ void fixup_prefs (struct uae_prefs *p, bool userconfig)
 				rbc->rtgmem_size = gfxboard_get_vram_max(rbc);
 			}
 		}
+#endif
 		if (p->address_space_24 && rbc->rtgmem_size && rbc->rtgmem_type == GFXBOARD_UAE_Z3) {
 			error_log (_T("Z3 RTG and 24bit address space are not compatible."));
 			rbc->rtgmem_type = GFXBOARD_UAE_Z2;
@@ -620,18 +579,9 @@ void fixup_prefs (struct uae_prefs *p, bool userconfig)
 		error_log (_T("Z3 autoconfig and 24bit address space are not compatible."));
 	}
 
-#if 0
-	if (p->m68k_speed < -1 || p->m68k_speed > 20) {
-		write_log (_T("Bad value for -w parameter: must be -1, 0, or within 1..20.\n"));
-		p->m68k_speed = 4;
-		err = 1;
-	}
-#endif
-
 	if (p->produce_sound < 0 || p->produce_sound > 3) {
 		error_log (_T("Bad value for -S parameter: enable value must be within 0..3."));
 		p->produce_sound = 0;
-		err = 1;
 	}
 
 	if ((p->z3fastmem[0].size || p->z3fastmem[1].size || p->z3fastmem[2].size || p->z3fastmem[3].size || p->z3chipmem.size) && p->address_space_24) {
@@ -641,13 +591,12 @@ void fixup_prefs (struct uae_prefs *p, bool userconfig)
 		p->z3fastmem[2].size = 0;
 		p->z3fastmem[3].size = 0;
 		p->z3chipmem.size = 0;
-		err = 1;
 	}
-	for (int i = 0; i < MAX_RTG_BOARDS; i++) {
-		if ((p->rtgboards[i].rtgmem_size > 0 && p->rtgboards[i].rtgmem_type == GFXBOARD_UAE_Z3) && p->address_space_24) {
+	for (auto& rtgboard : p->rtgboards)
+	{
+		if (rtgboard.rtgmem_size > 0 && rtgboard.rtgmem_type == GFXBOARD_UAE_Z3 && p->address_space_24) {
 			error_log (_T("UAEGFX Z3 RTG can't be used if address space is 24-bit."));
-			p->rtgboards[i].rtgmem_size = 0;
-			err = 1;
+			rtgboard.rtgmem_size = 0;
 		}
 	}
 
@@ -660,7 +609,7 @@ void fixup_prefs (struct uae_prefs *p, bool userconfig)
 #endif
 	if (p->socket_emu && p->uaeboard >= 3) {
 		write_log(_T("bsdsocket.library is not compatible with indirect UAE Boot ROM.\n"));
-		p->socket_emu = 0;
+		p->socket_emu = false;
 	}
 
 	if (p->nr_floppies < 0 || p->nr_floppies > 4) {
@@ -670,7 +619,6 @@ void fixup_prefs (struct uae_prefs *p, bool userconfig)
 		p->floppyslots[1].dfxtype = 0;
 		p->floppyslots[2].dfxtype = -1;
 		p->floppyslots[3].dfxtype = -1;
-		err = 1;
 	}
 	if (p->floppy_speed > 0 && p->floppy_speed < 10) {
 		error_log (_T("Invalid floppy speed."));
@@ -683,7 +631,6 @@ void fixup_prefs (struct uae_prefs *p, bool userconfig)
 	if (p->collision_level < 0 || p->collision_level > 3) {
 		error_log (_T("Invalid collision support level.  Using 1."));
 		p->collision_level = 1;
-		err = 1;
 	}
 	if (p->parallel_postscript_emulation)
 		p->parallel_postscript_detection = 1;
@@ -736,30 +683,27 @@ void fixup_prefs (struct uae_prefs *p, bool userconfig)
 	p->address_space_24 = 0;
 #endif
 #if !defined (CPUEMU_13)
-	p->cpu_cycle_exact = p->blitter_cycle_exact = 0;
+	p->cpu_cycle_exact = p->blitter_cycle_exact = false;
 #endif
 #ifndef AGA
 	p->chipset_mask &= ~CSMASK_AGA;
 #endif
 #ifndef AUTOCONFIG
-	p->z3fastmem_size = 0;
-	p->fastmem_size = 0;
-	p->rtgmem_size = 0;
+	p->z3fastmem[0].size = 0;
+	p->fastmem[0].size = 0;
+	p->rtgboards[0].rtgmem_size = 0;
 #endif
 #if !defined (BSDSOCKET)
 	p->socket_emu = 0;
 #endif
 #if !defined (SCSIEMU)
 	p->scsi = 0;
-#ifdef _WIN32
-	p->win32_aspi = 0;
-#endif
 #endif
 #if !defined (SANA2)
 	p->sana2 = 0;
 #endif
 #if !defined (UAESERIAL)
-	p->uaeserial = 0;
+	p->uaeserial = false;
 #endif
 #if defined (CPUEMU_13)
 	if (p->cpu_memory_cycle_exact) {
@@ -771,12 +715,6 @@ void fixup_prefs (struct uae_prefs *p, bool userconfig)
 			error_log (_T("Cycle-exact and JIT can't be active simultaneously."));
 			p->cachesize = 0;
 		}
-#if 0
-		if (p->m68k_speed) {
-			error_log (_T("Adjustable CPU speed is not available in cycle-exact mode."));
-			p->m68k_speed = 0;
-		}
-#endif
 	}
 #endif
 	if (p->gfx_framerate < 1)
@@ -808,7 +746,10 @@ void fixup_prefs (struct uae_prefs *p, bool userconfig)
 	blkdev_fix_prefs (p);
 	inputdevice_fix_prefs(p, userconfig);
 	target_fixup_options (p);
+#ifndef AMIBERRY
+	// This one caused crashes in some cases, and I don't think it's actually needed in Amiberry
 	cfgfile_createconfigstore(p);
+#endif
 }
 
 int quit_program = 0;
@@ -858,20 +799,74 @@ void uae_restart(struct uae_prefs *p, int opengui, const TCHAR *cfgfile)
 	target_restart ();
 }
 
-#ifndef DONT_PARSE_CMDLINE
-
-void usage (void)
+void print_version()
 {
+	std::cout << get_version_string() << "\n" << get_copyright_notice() << std::endl;
+	exit(0);
 }
+
+void usage()
+{
+	std::cout << __ver << std::endl;
+	std::cout << "Usage:" << std::endl;
+	std::cout << " -h                         Show this help." << std::endl;
+	std::cout << " --help                     \n" << std::endl;
+	std::cout << " -f <file>                  Load a configuration file." << std::endl;
+	std::cout << " --config <file>            " << std::endl;
+	std::cout << " --model <Amiga Model>      Amiga model to emulate, from the QuickStart options." << std::endl;
+	std::cout << "                            Available options are: A500, A500P, A1200, A4000, CD32 and CDTV.\n" << std::endl;
+	std::cout << " --autoload <file>          Load a WHDLoad game or .CUE CD32 image using the WHDBooter." << std::endl;
+	std::cout << " --cdimage <file>           Load the CD image provided when starting emulation (for CD32)." << std::endl;
+	std::cout << " --statefile <file>         Load a save state file." << std::endl;
+	std::cout << " -s <option>=<value>        Set one or more configuration options directly, without loading a file." << std::endl;
+	std::cout << "                            Edit a configuration file in order to know valid parameters and settings." << std::endl;
+	std::cout << "\nAdditional options:" << std::endl;
+	std::cout << " -0 <disk.adf>              Insert specified ADF image into emulated floppy drive 0-3." << std::endl;
+	std::cout << " -1 <disk.adf>              " << std::endl;
+	std::cout << " -2 <disk.adf>              " << std::endl;
+	std::cout << " -3 <disk.adf>              \n" << std::endl;
+	std::cout << " -diskswapper=d1.adf,d2.adf Comma-separated list of disk images to pre-load to the Disk Swapper." << std::endl;
+	std::cout << " -r <kick.rom>              Load main ROM from the specified path." << std::endl;
+	std::cout << " -K <kick.rom>              Load extended ROM from the specified path." << std::endl;
+	std::cout << " -m VOLNAME:mount_point     Attach a volume directly to the specified mount point." << std::endl;
+	std::cout << " -W DEVNAME:hardfile        Attach a hardfile with the specified device name." << std::endl;
+	std::cout << " -S <value>                 Sound parameter specification." << std::endl;
+	std::cout << " -R <value>                 Output framerate in frames per second." << std::endl;
+	std::cout << " -i                         Enable illegal memory." << std::endl;
+	std::cout << " -J <xy>                    Specify joystick 0 (x) and 1 (y). Possible values: 0/1 for joystick, M for mouse, and a/b/c." << std::endl;
+	std::cout << " -w <value>                 CPU emulation speed. Possible values: 0 (Cycle Exact), -1 (Max)." << std::endl;
+	std::cout << " -G                         Don't show the GUI, start emulation directly." << std::endl;
+	std::cout << " -n                         Enable Immediate Blits. Only available when illegal memory is not enabled." << std::endl;
+	std::cout << " -v <value>                 Set Chipset. Possible values: 0 (OCS), 1 (ECS Agnus), 2 (ECS Denise), 3 (Full ECS), 4 (AGA)." << std::endl;
+	std::cout << " -C <value>                 Set CPU specs." << std::endl;
+	std::cout << " -Z <value>                 Z3 FastRAM size, value in 1MB blocks, i.e. 2=2MB." << std::endl;
+	std::cout << " -U <value>                 RTG Memory size, value in 1MB blocks, i.e. 2=2MB." << std::endl;
+	std::cout << " -F <value>                 Fastmem size, value in 1MB blocks, i.e. 2=2MB." << std::endl;
+	std::cout << " -b <value>                 Bogomem size, value in 256KB blocks, i.e. 2=512KB." << std::endl;
+	std::cout << " -c <value>                 Size of chip memory (in number of 512 KBytes chunks)." << std::endl;
+	std::cout << " -I <value>                 Set keyboard layout language. Possible values: de, dk, us, se, fr, it, es." << std::endl;
+	std::cout << " -O <value>                 Set graphics specs." << std::endl;
+	std::cout << " -H <value>                 Color mode." << std::endl;
+	std::cout << " -o <amiberry cnf>=<value>  Set Amiberry configuration parameter with value." << std::endl;
+	std::cout << "                            See: https://github.com/midwan/amiberry/wiki/Amiberry.conf-options" << std::endl;
+	std::cout << "\nExample 1:" << std::endl;
+	std::cout << "amiberry --model A1200 -G" << std::endl;
+	std::cout << "This will use the A1200 default settings as found in the QuickStart panel." << std::endl;
+	std::cout << "Additionally, it will override 'use_gui' to 'no', so that it enters emulation directly." << std::endl;
+	std::cout << "\nExample 2:" << std::endl;
+	std::cout << "amiberry --config conf/A500.uae --statefile savestates/game.uss -s use_gui=no" << std::endl;
+	std::cout << "This will load the conf/A500.uae configuration file, with the save state named game." << std::endl;
+	std::cout << "It will override 'use_gui' to 'no', so that it enters emulation directly." << std::endl;
+	exit(0);
+}
+
 static void parse_cmdline_2 (int argc, TCHAR **argv)
 {
-	int i;
-
 	cfgfile_addcfgparam (0);
-	for (i = 1; i < argc; i++) {
-		if (_tcsncmp (argv[i], _T("-cfgparam="), 10) == 0) {
-			cfgfile_addcfgparam (argv[i] + 10);
-		} else if (_tcscmp (argv[i], _T("-cfgparam")) == 0) {
+	for (auto i = 1; i < argc; i++) {
+		if (_tcsncmp(argv[i], _T("-cfgparam="), 10) == 0) {
+			cfgfile_addcfgparam(argv[i] + 10);
+		} else if (_tcscmp(argv[i], _T("-cfgparam")) == 0) {
 			if (i + 1 == argc)
 				write_log (_T("Missing argument for '-cfgparam' option.\n"));
 			else
@@ -882,7 +877,7 @@ static void parse_cmdline_2 (int argc, TCHAR **argv)
 
 static int diskswapper_cb (struct zfile *f, void *vrsd)
 {
-	int *num = (int*)vrsd;
+	auto* num = static_cast<int*>(vrsd);
 	if (*num >= MAX_SPARE_DRIVES)
 		return 1;
 	int type = zfile_gettype(f);
@@ -895,14 +890,14 @@ static int diskswapper_cb (struct zfile *f, void *vrsd)
 
 static void parse_diskswapper (const TCHAR *s)
 {
-	TCHAR *tmp = my_strdup (s);
-	const TCHAR *delim = _T(",");
-	TCHAR *p1, *p2;
-	int num = 0;
+	auto* const tmp = my_strdup (s);
+	const auto* delim = _T(",");
+	TCHAR* p2;
+	auto num = 0;
 
-	p1 = tmp;
+	auto* p1 = tmp;
 	for (;;) {
-		p2 = _tcstok (p1, delim);
+		p2 = _tcstok(p1, delim);
 		if (!p2)
 			break;
 		p1 = NULL;
@@ -913,115 +908,192 @@ static void parse_diskswapper (const TCHAR *s)
 			num++;
 		}
 	}
-	free (tmp);
+	xfree (tmp);
 }
 
 static TCHAR *parsetext (const TCHAR *s)
 {
 	if (*s == '"' || *s == '\'') {
-		TCHAR *d;
-		TCHAR c = *s++;
-		int i;
-		d = my_strdup (s);
-		for (i = 0; i < _tcslen (d); i++) {
+		const auto c = *s++;
+		auto* const d = my_strdup (s);
+		for (unsigned int i = 0; i < _tcslen (d); i++) {
 			if (d[i] == c) {
 				d[i] = 0;
 				break;
 			}
 		}
 		return d;
-	} else {
-		return my_strdup (s);
 	}
+	return my_strdup(s);
 }
 static TCHAR *parsetextpath (const TCHAR *s)
 {
-	TCHAR *s2 = parsetext (s);
-	TCHAR *s3 = target_expand_environment (s2, NULL, 0);
-	xfree (s2);
+	auto* const s2 = parsetext (s);
+	auto* const s3 = target_expand_environment (s2, NULL, 0);
+	xfree(s2);
 	return s3;
+}
+
+std::string get_filename_extension(const TCHAR* filename)
+{
+	const std::string fName(filename);
+	const auto pos = fName.rfind('.');
+	if (pos == std::string::npos) // no extension
+		return "";
+	if (pos == 0) // . is at the front, not an extension
+		return "";
+	return fName.substr(pos, fName.length());
 }
 
 static void parse_cmdline (int argc, TCHAR **argv)
 {
-	int i;
 	static bool started;
-	bool firstconfig = true;
-	bool loaded = false;
+	auto firstconfig = true;
+	auto loaded = false;
 
 	// only parse command line when starting for the first time
 	if (started)
 		return;
 	started = true;
 
-	for (i = 1; i < argc; i++) {
-		if (!_tcsncmp (argv[i], _T("-diskswapper="), 13)) {
-			TCHAR *txt = parsetextpath (argv[i] + 13);
+	for (auto i = 1; i < argc; i++) {
+		if (!_tcsncmp(argv[i], _T("-diskswapper="), 13)) {
+			auto* txt = parsetextpath (argv[i] + 13);
 			parse_diskswapper (txt);
-			xfree (txt);
+			xfree(txt);
 		} else if (_tcsncmp (argv[i], _T("-cfgparam="), 10) == 0) {
 			;
 		} else if (_tcscmp (argv[i], _T("-cfgparam")) == 0) {
 			if (i + 1 < argc)
 				i++;
-		} else if (_tcsncmp (argv[i], _T("-config="), 8) == 0) {
-			TCHAR *txt = parsetextpath (argv[i] + 8);
-			currprefs.mountitems = 0;
-			target_cfgfile_load (&currprefs, txt, firstconfig ? CONFIG_TYPE_ALL : CONFIG_TYPE_HARDWARE | CONFIG_TYPE_HOST | CONFIG_TYPE_NORESET, 0);
-			xfree (txt);
-			firstconfig = false;
-			loaded = true;
-		} else if (_tcsncmp (argv[i], _T("-statefile="), 11) == 0) {
-			TCHAR *txt = parsetextpath (argv[i] + 11);
-			savestate_state = STATE_DORESTORE;
-			_tcscpy (savestate_fname, txt);
-			xfree (txt);
-			loaded = true;
-		} else if (_tcscmp (argv[i], _T("-f")) == 0) {
-			/* Check for new-style "-f xxx" argument, where xxx is config-file */
-			if (i + 1 == argc) {
-				write_log (_T("Missing argument for '-f' option.\n"));
-			} else {
-				TCHAR *txt = parsetextpath (argv[++i]);
+		} else if (_tcscmp(argv[i], _T("--config")) == 0 || _tcscmp(argv[i], _T("-f")) == 0) {
+			if (i + 1 == argc)
+				write_log(_T("Missing argument for '--config' option.\n"));
+			else
+			{
+				auto* const txt = parsetextpath(argv[++i]);
 				currprefs.mountitems = 0;
-				target_cfgfile_load (&currprefs, txt, firstconfig ? CONFIG_TYPE_ALL : CONFIG_TYPE_HARDWARE | CONFIG_TYPE_HOST | CONFIG_TYPE_NORESET, 0);
-				xfree (txt);
+				target_cfgfile_load(&currprefs, txt,
+					firstconfig
+					? CONFIG_TYPE_ALL
+					: CONFIG_TYPE_HARDWARE | CONFIG_TYPE_HOST | CONFIG_TYPE_NORESET, 0);
+				xfree(txt);
 				firstconfig = false;
 			}
 			loaded = true;
-		} else if (_tcscmp (argv[i], _T("-s")) == 0) {
+		} else if (_tcscmp(argv[i], _T("--model")) == 0 || _tcscmp(argv[i], _T("-m")) == 0) {
 			if (i + 1 == argc)
-				write_log (_T("Missing argument for '-s' option.\n"));
+				write_log(_T("Missing argument for '--model' option.\n"));
 			else
-				cfgfile_parse_line (&currprefs, argv[++i], 0);
-		} else if (_tcscmp (argv[i], _T("-h")) == 0 || _tcscmp (argv[i], _T("-help")) == 0) {
-			usage ();
-			exit (0);
-		} else if (_tcsncmp (argv[i], _T("-cdimage="), 9) == 0) {
-			TCHAR *txt = parsetextpath (argv[i] + 9);
-			TCHAR *txt2 = xmalloc(TCHAR, _tcslen(txt) + 2);
-			_tcscpy(txt2, txt);
-			if (_tcsrchr(txt2, ',') != NULL)
-				_tcscat(txt2, _T(","));
-			cfgfile_parse_option (&currprefs, _T("cdimage0"), txt2, 0);
-			xfree(txt2);
-			xfree(txt);
+			{
+				auto* const txt = parsetextpath(argv[++i]);
+				if (_tcscmp(txt, _T("A500")) == 0)
+				{
+					bip_a500(&currprefs, 130);
+				}
+				else if (_tcscmp(txt, _T("A500P")) == 0)
+				{
+					bip_a500plus(&currprefs, -1);
+				}
+				else if (_tcscmp(txt, _T("A1200")) == 0)
+				{
+					bip_a1200(&currprefs, -1);
+				}
+				else if (_tcscmp(txt, _T("A4000")) == 0)
+				{
+					bip_a4000(&currprefs, -1);
+				}
+				else if (_tcscmp(txt, _T("CD32")) == 0)
+				{
+					bip_cd32(&currprefs, -1);
+				}
+				else if (_tcscmp(txt, _T("CDTV")) == 0)
+				{
+					bip_cdtv(&currprefs, -1);
+				}
+			}
+		} else if (_tcscmp(argv[i], _T("--statefile")) == 0) {
+			if (i + 1 == argc)
+				write_log(_T("Missing argument for '--statefile' option.\n"));
+			else
+			{
+				auto* const txt = parsetextpath(argv[++i]);
+				savestate_state = STATE_DORESTORE;
+				_tcscpy(savestate_fname, txt);
+				xfree(txt);
+			}
 			loaded = true;
+		}
+		// Auto-load .cue / .lha  
+		else if (_tcscmp(argv[i], _T("--autoload")) == 0)
+		{
+			if (i + 1 == argc)
+				write_log(_T("Missing argument for '--autoload' option.\n"));
+			else
+			{
+				auto* const txt = parsetextpath(argv[++i]);
+				const auto txt2 = get_filename_extension(txt); // Extract the extension from the string  (incl '.')
+				if (_tcscmp(txt2.c_str(), ".lha") == 0)
+				{
+					write_log("WHDLoad... %s\n", txt);
+					whdload_auto_prefs(&currprefs, txt);
+					xfree(txt);
+				}
+				else if (_tcscmp(txt2.c_str(), ".cue") == 0 
+					|| _tcscmp(txt2.c_str(), ".iso") == 0
+					|| _tcscmp(txt2.c_str(), ".chd") == 0)
+				{
+					write_log("CDTV/CD32... %s\n", txt);
+					cd_auto_prefs(&currprefs, txt);
+					xfree(txt);
+				}
+				else
+					write_log("Can't find extension ... %s\n", txt);
+			}
+		}
+		else if (_tcscmp(argv[i], _T("--cli")) == 0)
+			console_emulation = true;
+		else if (_tcscmp(argv[i], _T("-s")) == 0)
+		{
+			if (i + 1 == argc)
+				write_log(_T("Missing argument for '-s' option.\n"));
+			else
+				cfgfile_parse_line(&currprefs, argv[++i], 0);
+		} else if (_tcscmp(argv[i], _T("--cdimage")) == 0) {
+			if (i + 1 == argc)
+				write_log(_T("Missing argument for '--cdimage' option.\n"));
+			else
+			{
+				auto* const txt = parsetextpath(argv[++i]);
+				auto* const txt2 = xmalloc(TCHAR, _tcslen(txt) + 5);
+				_tcscpy(txt2, txt);
+				if (_tcsrchr(txt2, ',') == nullptr)
+					_tcscat(txt2, _T(",image"));
+				cfgfile_parse_option(&currprefs, _T("cdimage0"), txt2, 0);
+				xfree(txt2);
+				xfree(txt);
+			}
+			loaded = true;
+		} else if (_tcscmp(argv[i], _T("-h")) == 0 || _tcscmp(argv[i], _T("--help")) == 0) {
+			usage();
 		} else if (argv[i][0] == '-' && argv[i][1] != '\0') {
-				const TCHAR *arg = argv[i] + 2;
-				int extra_arg = *arg == '\0';
-				if (extra_arg)
-					arg = i + 1 < argc ? argv[i + 1] : 0;
-				if (parse_cmdline_option (&currprefs, argv[i][1], arg) && extra_arg)
-					i++;
+			const TCHAR* arg = argv[i] + 2;
+			const int extra_arg = *arg == '\0';
+			if (extra_arg)
+				arg = i + 1 < argc ? argv[i + 1] : nullptr;
+			const auto ret = parse_cmdline_option(&currprefs, argv[i][1], arg);
+			if (ret == -1)
+				usage();
+			if (ret && extra_arg)
+				i++;
 		} else if (i == argc - 1) {
 			// if last config entry is an orphan and nothing else was loaded:
 			// check if it is config file or statefile
 			if (!loaded) {
-				TCHAR *txt = parsetextpath(argv[i]);
-				struct zfile *z = zfile_fopen(txt, _T("rb"), ZFD_NORMAL);
+				auto* const txt = parsetextpath(argv[i]);
+				auto* const z = zfile_fopen(txt, _T("rb"), ZFD_NORMAL);
 				if (z) {
-					int type = zfile_gettype(z);
+					const auto type = zfile_gettype(z);
 					zfile_fclose(z);
 					if (type == ZFILE_CONFIGURATION) {
 						currprefs.mountitems = 0;
@@ -1033,26 +1105,18 @@ static void parse_cmdline (int argc, TCHAR **argv)
 				}
 				xfree(txt);
 			}
+			else
+			{
+				printf("Unknown option %s\n", argv[i]);
+				usage();
+			}
 		}
 	}
 }
-#endif
 
 static void parse_cmdline_and_init_file(int argc, TCHAR **argv)
 {
-
 	_tcscpy (optionsfile, _T(""));
-
-#ifdef OPTIONS_IN_HOME
-	{
-		TCHAR *home = getenv("HOME");
-		if (home != NULL && strlen(home) < 240)
-		{
-			_tcscpy(optionsfile, home);
-			_tcscat(optionsfile, _T("/"));
-		}
-	}
-#endif
 
 	parse_cmdline_2(argc, argv);
 
@@ -1060,11 +1124,10 @@ static void parse_cmdline_and_init_file(int argc, TCHAR **argv)
 
 	if (! target_cfgfile_load(&currprefs, optionsfile, CONFIG_TYPE_DEFAULT, default_config)) {
 		write_log(_T("failed to load config '%s'\n"), optionsfile);
-#ifdef OPTIONS_IN_HOME
-		/* sam: if not found in $HOME then look in current directory */
-		_tcscpy(optionsfile, restart_config);
-		target_cfgfile_load(&currprefs, optionsfile, CONFIG_TYPE_DEFAULT, default_config);
-#endif
+	}
+	else
+	{
+		config_loaded = true;
 	}
 
 	parse_cmdline(argc, argv);
@@ -1081,17 +1144,7 @@ static void parse_cmdline_and_init_file(int argc, TCHAR **argv)
 * of start_program () and leave_program () if you need to do anything special.
 * Add #ifdefs around these as appropriate.
 */
-
-#ifdef _WIN32
-#ifndef JIT
-extern int DummyException (LPEXCEPTION_POINTERS blah, int n_except)
-{
-	return EXCEPTION_CONTINUE_SEARCH;
-}
-#endif
-#endif
-
-void do_start_program (void)
+static void do_start_program ()
 {
 	if (quit_program == -UAE_QUIT)
 		return;
@@ -1102,58 +1155,186 @@ void do_start_program (void)
 #ifdef WITH_LUA
 	uae_lua_loadall ();
 #endif
-#ifdef USE_STRUCTURED_EXCEPTION_HANDLING
-	__try
-#endif
+	try
 	{
+		emulating = 1;
 		m68k_go (1);
 	}
-#ifdef USE_STRUCTURED_EXCEPTION_HANDLING
-#ifdef JIT
-	__except (EvalException(GetExceptionInformation()))
-#else
-	__except (DummyException (GetExceptionInformation (), GetExceptionCode ()))
-#endif
+	catch (...)
 	{
-		// EvalException does the good stuff...
+		write_log("An exception was thrown while running m68k_go!\n");
 	}
-#endif
 }
 
-void start_program (void)
+static void start_program ()
 {
 	do_start_program ();
 }
 
-void leave_program (void)
+static void leave_program ()
 {
 	do_leave_program ();
 }
 
+long get_file_size(const std::string& filename)
+{
+	struct stat stat_buf{};
+	const auto rc = stat(filename.c_str(), &stat_buf);
+	return rc == 0 ? static_cast<long>(stat_buf.st_size) : -1;
+}
+
+bool file_exists(const std::string& file)
+{
+	#ifdef USE_OLDGCC
+	namespace fs = std::experimental::filesystem;
+	#else
+	namespace fs = std::filesystem;
+	#endif
+	fs::path f { file };
+	return (fs::exists(f));
+}
+
+bool download_file(const std::string& source, const std::string& destination, bool keep_backup)
+{
+	// homebrew installs in different locations on OSX Intel vs OSX Apple Silicon
+#if defined (__MACH__) && defined (__arm64__)	
+	std::string wget_path = "/opt/homebrew/bin/wget";
+	if (!file_exists(wget_path))
+	{
+		write_log("Could not locate wget in /opt/homebrew/ - Please use homebrew to install it!\n");
+		return false;
+	}
+#elif defined(__MACH__)
+	std::string wget_path = "/usr/local/bin/wget";
+	if (!file_exists(wget_path))
+	{
+		write_log("Could not locate wget in /usr/local/bin/ - Please use homebrew to install it!\n");
+		return false;
+	}
+#else
+	std::string wget_path = "wget";
+#endif
+	std::string download_command = wget_path + " -np -nv -O ";
+	auto tmp = destination;
+	tmp = tmp.append(".tmp");
+
+	download_command.append(tmp);
+	download_command.append(" ");
+	download_command.append(source);
+	download_command.append(" 2>&1");
+
+	// Cleanup if the tmp destination already exists
+	if (file_exists(tmp))
+	{
+		write_log("Existing file found, removing %s\n", tmp.c_str());
+		if (std::remove(tmp.c_str()) < 0)
+		{
+			write_log(strerror(errno));
+			write_log("\n");
+		}
+	}
+
+	try
+	{
+		char buffer[MAX_DPATH];
+		const auto output = popen(download_command.c_str(), "r");
+		if (!output)
+		{
+			write_log("Failed while trying to run wget! Make sure it exists in your system...\n");
+			return false;
+		}
+
+		while (fgets(buffer, sizeof buffer, output))
+		{
+			write_log(buffer);
+			write_log("\n");
+		}
+		pclose(output);
+	}
+	catch (...)
+	{
+		write_log("An exception was thrown while trying to execute wget!\n");
+		return false;
+	}
+
+	if (file_exists(tmp))
+	{
+		if (file_exists(destination) && keep_backup)
+		{
+			write_log("Backup requested, renaming destination file %s to .bak\n", destination.c_str());
+			std::string new_filename = destination.substr(0, destination.find_last_of('.')).append(".bak");
+			if (std::rename(destination.c_str(), new_filename.c_str()) < 0)
+			{
+				write_log(strerror(errno));
+				write_log("\n");
+			}
+		}
+
+		write_log("Renaming downloaded temporary file %s to final destination\n", tmp.c_str());
+		if (std::rename(tmp.c_str(), destination.c_str()) < 0)
+		{
+			write_log(strerror(errno));
+			write_log("\n");
+		}
+		return true;
+	}
+
+	return false;
+}
+
+void download_rtb(const std::string& filename)
+{
+	std::string destination_filename = "save-data/Kickstarts/" + filename;
+	const std::string destination = prefix_with_whdboot_path(destination_filename);
+	if (!file_exists(destination))
+	{
+		write_log("Downloading %s ...\n", destination.c_str());
+		const std::string url = "https://github.com/midwan/amiberry/blob/master/whdboot/save-data/Kickstarts/" + filename + "?raw=true";
+		download_file(url,  destination, false);
+	}
+}
+
+// In case of error, print the error code and close the application
+void check_error_sdl(const bool check, const char* message)
+{
+	if (check)
+	{
+		std::cout << message << " " << SDL_GetError() << std::endl;
+		SDL_Quit();
+		exit(-1);
+	}
+}
+
 static int real_main2 (int argc, TCHAR **argv)
 {
-
-#ifdef USE_SDL
-	SDL_Init (SDL_INIT_TIMER | SDL_INIT_AUDIO | SDL_INIT_JOYSTICK | SDL_INIT_NOPARACHUTE);
-#endif
-	set_config_changed ();
+	keyboard_settrans();
+	set_config_changed();
 	if (restart_config[0]) {
 		default_prefs (&currprefs, true, 0);
 		fixup_prefs (&currprefs, true);
 	}
 
-	if (! graphics_setup ()) {
-		exit (1);
-	}
+#ifdef NATMEM_OFFSET
+#ifdef AMIBERRY
+	preinit_shm ();
+#else
+	//preinit_shm ();
+#endif
+#endif
 
 	event_init();
 
-	if (restart_config[0])
-		parse_cmdline_and_init_file (argc, argv);
+	if (restart_config[0]) {
+		parse_cmdline_and_init_file(argc, argv);
+	}
 	else
 		copy_prefs(&changed_prefs, &currprefs);
 
-	if (!machdep_init ()) {
+	if (!graphics_setup()) {
+		abort();
+	}
+
+	if (!machdep_init()) {
 		restart_program = 0;
 		return -1;
 	}
@@ -1171,15 +1352,16 @@ static int real_main2 (int argc, TCHAR **argv)
 
 	copy_prefs(&currprefs, &changed_prefs);
 	inputdevice_updateconfig(&currprefs, &changed_prefs);
+	inputdevice_config_change();
 
 	no_gui = ! currprefs.start_gui;
 	if (restart_program == 2 || restart_program == 4)
-		no_gui = 1;
+		no_gui = true;
 	else if (restart_program == 3)
-		no_gui = 0;
+		no_gui = false;
 	restart_program = 0;
 	if (! no_gui) {
-		int err = gui_init ();
+		const auto err = gui_init ();
 		copy_prefs(&changed_prefs, &currprefs);
 		set_config_changed ();
 		if (err == -1) {
@@ -1195,8 +1377,6 @@ static int real_main2 (int argc, TCHAR **argv)
 	gui_data.hd = -1;
 	gui_data.net = -1;
 	gui_data.md = (currprefs.cs_cd32nvram || currprefs.cs_cdtvram) ? 0 : -1;
-	logging_init (); /* Yes, we call this twice - the first case handles when the user has loaded
-						 a config using the cmd-line.  This case handles loads through the GUI. */
 
 #ifdef JIT
 	compiler_init();
@@ -1212,13 +1392,6 @@ static int real_main2 (int argc, TCHAR **argv)
 	uae_lua_init ();
 #endif
 
-#if 0
-#ifdef JIT
-	if (!(currprefs.cpu_model >= 68020 && currprefs.address_space_24 == 0 && currprefs.cachesize))
-		canbang = 0;
-#endif
-#endif
-	cfgfile_get_shader_config(&currprefs, 0);
 	fixup_prefs (&currprefs, true);
 #ifdef RETROPLATFORM
 	rp_fixup_options (&currprefs);
@@ -1229,7 +1402,9 @@ static int real_main2 (int argc, TCHAR **argv)
 	/* force sound settings change */
 	currprefs.produce_sound = 0;
 
+#ifdef SAVESTATE
 	savestate_init ();
+#endif
 	keybuf_init (); /* Must come after init_joystick */
 
 #ifdef DEBUGGER
@@ -1253,15 +1428,13 @@ static int real_main2 (int argc, TCHAR **argv)
 	reset_frame_rate_hack ();
 	init_m68k (); /* must come after reset_frame_rate_hack (); */
 
-	gui_update ();
-
 	if (graphics_init (true)) {
-#ifdef DEBUGGER
-		setup_brkhandler ();
-		if (currprefs.start_debugger && debuggable ())
-			activate_debugger ();
-#endif
-
+	// This never gets triggered anyway
+//#ifdef DEBUGGER
+//		setup_brkhandler ();
+//		if (currprefs.start_debugger && debuggable ())
+//			activate_debugger ();
+//#endif
 		if (!init_audio ()) {
 			if (sound_available && currprefs.produce_sound > 1) {
 				write_log (_T("Sound driver unavailable: Sound output disabled\n"));
@@ -1277,14 +1450,14 @@ void real_main (int argc, TCHAR **argv)
 {
 	restart_program = 1;
 
-	fetch_configurationpath (restart_config, sizeof (restart_config) / sizeof (TCHAR));
+	get_configuration_path (restart_config, sizeof restart_config / sizeof (TCHAR));
 	_tcscat (restart_config, OPTIONSFILENAME);
+	_tcscat(restart_config, ".uae");
 	default_config = 1;
 
 	while (restart_program) {
-		int ret;
 		copy_prefs(&currprefs, &changed_prefs);
-		ret = real_main2 (argc, argv);
+		const auto ret = real_main2 (argc, argv);
 		if (ret == 0 && quit_to_gui)
 			restart_program = 1;
 		leave_program ();
@@ -1299,9 +1472,4 @@ int main (int argc, TCHAR **argv)
 	real_main (argc, argv);
 	return 0;
 }
-#endif
-
-#ifdef SINGLEFILE
-uae_u8 singlefile_config[50000] = { "_CONFIG_STARTS_HERE" };
-uae_u8 singlefile_data[1500000] = { "_DATA_STARTS_HERE" };
 #endif

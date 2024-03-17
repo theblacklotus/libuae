@@ -30,19 +30,27 @@
 #include "inputdevice.h"
 #include "zfile.h"
 #include "ar.h"
+#ifdef PARALLEL_PORT
 #include "parallel.h"
+#endif
 #include "akiko.h"
 #include "cdtv.h"
 #include "debug.h"
+#ifdef ARCADIA
 #include "arcadia.h"
+#endif
 #include "audio.h"
 #include "keyboard.h"
 #include "uae.h"
+#ifdef AMAX
 #include "amax.h"
+#endif
 #include "sampler.h"
 #include "dongle.h"
 #include "inputrecord.h"
+#ifdef WITH_PPC
 #include "uae/ppc.h"
+#endif
 #include "rommgr.h"
 #include "scsi.h"
 #include "rtc.h"
@@ -382,8 +390,8 @@ static void compute_passed_time_cia(int num, uae_u32 ciaclocks)
 static void compute_passed_time(void)
 {
 	evt_t ccount = get_cycles() - eventtab[ev_cia].oldcycles;
-	if (ccount > MAXINT) {
-		ccount = MAXINT;
+	if (ccount > INT_MAX) {
+		ccount = INT_MAX;
 	}
 	uae_u32 ciaclocks = (uae_u32)ccount / DIV10;
 
@@ -482,8 +490,8 @@ in the same cycle.  */
 static void CIA_update_check(void)
 {
 	evt_t ccount = get_cycles() - eventtab[ev_cia].oldcycles;
-	if (ccount > MAXINT) {
-		ccount = MAXINT;
+	if (ccount > INT_MAX) {
+		ccount = INT_MAX;
 	}
 	int ciaclocks = (uae_u32)(ccount / DIV10);
 	if (!ciaclocks) {
@@ -567,7 +575,9 @@ static void CIA_update_check(void)
 				ovfl[0] = 2;
 			}
 		}
+#ifndef AMIBERRY
 		assert(c->t[0].timer < 0x10000);
+#endif
 
 		// Timer B
 		cc = 0;
@@ -584,7 +594,9 @@ static void CIA_update_check(void)
 				}
 			}
 		}
+#ifndef AMIBERRY
 		assert(c->t[1].timer < 0x10000);
+#endif
 
 		// B INMODE=10 or 11 (B counting A underflows)
 		if (ovfl[0] && ((c->t[1].cr & (CR_INMODE | CR_INMODE1 | CR_START)) == (CR_INMODE1 | CR_START) || (c->t[1].cr & (CR_INMODE | CR_INMODE1 | CR_START)) == (CR_INMODE | CR_INMODE1 | CR_START))) {
@@ -1733,7 +1745,9 @@ static uae_u8 ReadCIAA(uae_u32 addr, uae_u32 *flags)
 		v |= handle_joystick_buttons(c->pra, c->dra);
 		v |= (c->pra | (c->dra ^ 3)) & 0x03;
 		v = dongle_cia_read(0, reg, c->dra, v);
+#ifdef ARCADIA
 		v = alg_joystick_buttons(c->pra, c->dra, v);
+#endif
 
 		// 391078-01 CIA: output mode bits always return PRA contents
 		if (currprefs.cs_ciatype[0]) {
@@ -1768,8 +1782,7 @@ static uae_u8 ReadCIAA(uae_u32 addr, uae_u32 *flags)
 		} else if (arcadia_bios) {
 			tmp = arcadia_parport(0, c->prb, c->drb);
 #endif
-		} else if (currprefs.win32_samplersoundcard >= 0) {
-
+		} else if (currprefs.samplersoundcard >= 0) {
 			tmp = sampler_getsample((c->pra & 4) ? 1 : 0);
 #endif
 
@@ -1948,7 +1961,9 @@ static void WriteCIAA(uae_u16 addr, uae_u8 val, uae_u32 *flags)
 #endif
 		c->prb = val;
 		dongle_cia_write(0, reg, c->drb, val);
+#ifdef ARCADIA
 		alg_parallel_port(c->drb, val);
+#endif
 #ifdef PARALLEL_PORT
 		if (isprinter()) {
 			if (isprinter() > 0) {

@@ -128,9 +128,11 @@ bool is_savestate_incompatible(void)
 	if (currprefs.rtgboards[0].rtgmem_type >= GFXBOARD_HARDWARE) {
 		dowarn = 1;
 	}
+#ifndef AMIBERRY // we only have 1 RTG board on Amiberry
 	if (currprefs.rtgboards[1].rtgmem_size > 0) {
 		dowarn = 1;
 	}
+#endif
 #endif
 #ifdef WITH_PPC
 	if (currprefs.ppc_model[0]) {
@@ -287,7 +289,7 @@ static bool state_path_exists(const TCHAR *path, int type)
 {
 	if (type == SAVESTATE_PATH_VDIR)
 		return my_existsdir(path);
-	return my_existsfile(path);
+	return my_existsfile2(path);
 }
 
 static TCHAR *state_resolve_path(TCHAR *s, int type, bool newmode)
@@ -327,7 +329,7 @@ static TCHAR *state_resolve_path(TCHAR *s, int type, bool newmode)
 		if (newpath == NULL || newpath[0] == 0)
 			break;
 		_tcscpy (tmp2, newpath);
-		fixtrailing (tmp2);
+		fix_trailing (tmp2);
 		_tcscat (tmp2, tmp);
 		fullpath (tmp2, sizeof tmp2 / sizeof (TCHAR));
 		if (state_path_exists(tmp2, type)) {
@@ -1119,9 +1121,11 @@ static int save_state_internal (struct zfile *f, const TCHAR *description, int c
 	save_chunk (f, dst, len, _T("CD32"), 0);
 	xfree (dst);
 #endif
+#ifdef ARCADIA
 	dst = save_alg(&len);
 	save_chunk(f, dst, len, _T("ALG "), 0);
 	xfree(dst);
+#endif
 #ifdef CDTV
 	dst = save_cdtv (&len, NULL);
 	save_chunk (f, dst, len, _T("CDTV"), 0);
@@ -1208,11 +1212,13 @@ static int save_state_internal (struct zfile *f, const TCHAR *description, int c
 	}
 #endif
 
+#ifndef AMIBERRY // this doesn't do anything in WinUAE either
 	dst = save_screenshot(0, &len);
 	if (dst) {
 		save_chunk(f, dst, len, _T("PIC0"), 0);
 		xfree(dst);
 	}
+#endif
 
 	/* add fake END tag, makes it easy to strip CONF and LOG hunks */
 	/* move this if you want to use CONF or LOG hunks when restoring state */
@@ -1292,7 +1298,7 @@ int save_state (const TCHAR *filename, const TCHAR *description)
 
 void savestate_quick (int slot, int save)
 {
-	int i, len = uaetcslen(savestate_fname);
+	int i, len = _tcslen(savestate_fname);
 	i = len - 1;
 	while (i >= 0 && savestate_fname[i] != '_')
 		i--;

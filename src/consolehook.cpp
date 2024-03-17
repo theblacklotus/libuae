@@ -48,8 +48,8 @@ void consolehook_config (struct uae_prefs *p)
 	p->gfx_monitor[0].gfx_size_win.width = 320;
 	p->gfx_monitor[0].gfx_size_win.height = 256;
 	p->turbo_emulation = 0;
-	//p->win32_automount_drives = 2;
-	//p->win32_automount_cddrives = 2;
+	//p->automount_drives = 2;
+	//p->automount_cddrives = 2;
 
 	_tcscpy (ci.rootdir, _T("."));
 	_tcscpy (ci.volname, _T("CLIBOOT"));
@@ -59,7 +59,7 @@ void consolehook_config (struct uae_prefs *p)
 	add_filesys_config (p, -1, &ci);
 }
 
-static void console_thread (void *v)
+static int console_thread (void *v)
 {
 	uae_set_thread_priority (NULL, 1);
 	for (;;) {
@@ -72,6 +72,7 @@ static void console_thread (void *v)
 		record_key_direct((0x10 << 1) | 0, false);
 		record_key_direct((0x10 << 1) | 1, false);
 	}
+	return 0;
 }
 
 int consolehook_activate (void)

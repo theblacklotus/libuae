@@ -72,6 +72,10 @@ static int g_max_handle = -1;
 #ifndef OS_NAME
 #define OS_NAME _T("windows")
 #endif
+#else
+#ifndef OS_NAME
+#define OS_NAME _T("linux")
+#endif
 #endif
 
 #if defined(__x86_64__) || defined(_M_AMD64) || defined(_M_X64)
@@ -80,11 +84,14 @@ static int g_max_handle = -1;
     #define ARCH_NAME _T("x86")
 #elif defined(__ppc__)
     #define ARCH_NAME _T("ppc")
+#elif defined(__arm__)
+	#define ARCH_NAME _T("arm")
 #else
     #define ARCH_NAME _T("unknown")
 #endif
 
-#define MODULE_SUFFIX (OS_NAME _T("-") ARCH_NAME LT_MODULE_EXT)
+//#define MODULE_SUFFIX (OS_NAME _T("-") ARCH_NAME LT_MODULE_EXT)
+#define MODULE_SUFFIX (OS_NAME _T("-") ARCH_NAME)
 
 static int UNICALL uni_version(void)
 {
@@ -449,7 +456,7 @@ static void do_call_function (struct uni *uni)
     }
 }
 
-static void uaenative_thread(void *arg)
+static int uaenative_thread(void *arg)
 {
     struct library_data *library_data = (struct library_data *) arg;
 
@@ -468,6 +475,7 @@ static void uaenative_thread(void *arg)
 
     write_log (_T("uni: uaenative_thread exiting\n"));
     free_library_data(library_data);
+    return 0;
 }
 
 uae_u32 uaenative_call_function (TrapContext *ctx, int flags)

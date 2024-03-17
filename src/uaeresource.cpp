@@ -15,27 +15,6 @@
 #include "traps.h"
 #include "autoconf.h"
 #include "execlib.h"
-#include "uaeresource.h"
-
-#if 0
-
-#define UAERESNAME "uae.resource"
-
-#define UAERES_GETFUNC (LIB_BASE - 0*LIB_VECTSIZE)
-
-APTR GetFunc (const char *name);
-
-struct uaebase
-{
-	struct Library uae_lib;
-	UWORD uae_version;
-	UWORD uae_revision;
-	UWORD uae_subrevision;
-	UWORD zero;
-	APTR uae_rombase;
-};
-
-#endif
 
 static uaecptr res_init, res_name, res_id, base;
 
