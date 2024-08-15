@@ -97,7 +97,7 @@ struct romdata *getromdatabypath (const TCHAR *path)
 	return NULL;
 }
 
-#define NEXT_ROM_ID 313
+#define NEXT_ROM_ID 316
 
 #if NEXT_ROM_ID >= MAX_ROMMGR_ROMS
 #error Increase MAX_ROMMGR_ROMS!
@@ -514,11 +514,11 @@ static struct romdata roms[] = {
 	{ _T("Warp Engine"), 0, 0, 0, 0, _T("WARPENGINE\0"), 32768, 93, 0, 0, ROMTYPE_CB_WENGINE, 0, 0, NULL,
 	0x4deb574a, 0x6e6c95ff,0xe8448391,0xd36c5b68,0xc9065cb0,0x702a7d27 },
 
-	{ _T("TekMagic 2040/2060"), 1, 0, 1, 0, _T("TEKMAGIC\0TEKMAGIC2040\0TEKMAGIC2060\0"), 65536, 104, 0, 0, ROMTYPE_CB_TEKMAGIC, 0, 0, NULL,
+	{ _T("TekMagic 2060 v1.0"), 1, 0, 1, 0, _T("TEKMAGIC\0TEKMAGIC2060\0"), 65536, 104, 0, 0, ROMTYPE_CB_TEKMAGIC, 0, 0, NULL,
 	0x9e9781d5, 0xf65b60d1,0x4300c50f,0x2ed17cf4,0x4dcfdef9,0x16697bc9, NULL,  _T("tekmagic2060.rom") },
 	ALTROMPN(104, 1, 1, 32768, ROMTYPE_ODD  | ROMTYPE_8BIT, NULL, 0x888da4cf, 0x6ae85f3a, 0x65331ba4, 0xaaba67ae, 0x34763d70, 0x2bde0495)
 	ALTROMPN(104, 1, 2, 32768, ROMTYPE_EVEN | ROMTYPE_8BIT, NULL, 0xaf1f47db, 0x28d5bed0, 0xbc517d46, 0x500e8159, 0x723e0b64, 0x4733c26a)
-	{ _T("TekMagic 2040"), 1, 0, 1, 0, _T("TEKMAGIC\0TEKMAGIC2040\0"), 65536, 303, 0, 0, ROMTYPE_CB_TEKMAGIC, 0, 0, NULL,
+	{ _T("TekMagic 2040 v1.1"), 1, 1, 1, 1, _T("TEKMAGIC\0TEKMAGIC2040\0"), 65536, 303, 0, 0, ROMTYPE_CB_TEKMAGIC, 0, 0, NULL,
 	0xff60cfe3, 0xea208934,0x5e2602cf,0xc715b2fc,0x50a392dd,0xd751823a, NULL,  _T("tekmagic2040.rom") },
 	ALTROMPN(303, 1, 1, 32768, ROMTYPE_ODD  | ROMTYPE_8BIT, NULL, 0xc19580de, 0x691b1119, 0x5163fd52, 0xb8a9025e, 0x3ac4311f, 0x7bc84013)
 	ALTROMPN(303, 1, 2, 32768, ROMTYPE_EVEN | ROMTYPE_8BIT, NULL, 0xbf3551fd, 0x4dc520fa, 0x7868e01b, 0xd6bfa3d6, 0x396f1e55 ,0x18d55372)
@@ -582,8 +582,10 @@ static struct romdata roms[] = {
 	ALTROMPN(113, 1, 2, 32768, ROMTYPE_QUAD | ROMTYPE_ODD  | ROMTYPE_8BIT, _T("U27"), 0x38373cf6, 0xfe8aa931, 0xada6b6f3, 0x6b48ca3c, 0x9b86677d, 0xbee4da59)
 	ALTROMPN(113, 1, 3, 32768, ROMTYPE_QUAD | ROMTYPE_EVEN | ROMTYPE_8BIT, _T("U25"), 0xc9e990d3, 0xb251ef73, 0x1374e796, 0xa87cbc7e, 0x9263320a, 0x28a71d2b)
 	ALTROMPN(113, 1, 4, 32768, ROMTYPE_QUAD | ROMTYPE_ODD  | ROMTYPE_8BIT, _T("U26"), 0x2e117fe0, 0xbb2de2da, 0x6db4e92c, 0x636fefe6, 0x13a32699, 0xcea31011)
-	{ _T("Apollo 1240/1260"), 5, 60, 5, 60, _T("APOLLO12XX\0"), 131072, 119, 0, 0, ROMTYPE_CB_APOLLO, 0, 0, NULL,
+	{ _T("Apollo 1240/1260"), 5, 60, 5, 60, _T("APOLLO12XX\0"), 131072, 119, 0, 0, ROMTYPE_CB_APOLLO_12xx, 0, 0, NULL,
 	0xcd009ad9, 0x1c3b4851,0xc5a221e3,0xa7ca24fc,0xc1df4a5b,0x9f2343ad },
+	{ _T("Apollo 630"), 5, 61, 5, 61, _T("APOLLO630\0"), 16384, 313, 0, 0, ROMTYPE_CB_APOLLO_630, 0, 0, NULL,
+	0x286cf453, 0xe0597cb6,0x5a6471b3,0xfd674e7b,0xc9e2423d,0x43e51ffc },
 	{ _T("GVP A3001 Series I"), 3, 3, 3, 3, _T("A3001SI\0"), 8192, 114, 0, 0, ROMTYPE_CB_A3001S1, 0, 0, NULL,
 	0xaaff7c65, 0x424cf3da,0xcc9da794,0x0ba74446,0x69dd1691,0x44ae87ee, NULL, NULL },
 	{ _T("Kupke Golem 030"), 0, 0, 0, 0, _T("GOLEM030\0"), 8192, 126, 0, 0, ROMTYPE_CB_GOLEM030, 0, 0, NULL,
@@ -1024,6 +1026,15 @@ static struct romdata roms[] = {
 	0xf78c8fa2, 0x07656cbf,0xdb6135f2,0x6add3b5f,0xa4ce5d46,0xdda706f9, NULL, NULL, 10 },
 	ALTROMPN(302, 1, 1, 65536, ROMTYPE_EVEN  | ROMTYPE_8BIT, NULL, 0x01c9a503, 0xf61ec2cd,0x241b2bf8,0xa982e81e,0x5a181786,0x01f0a0a0)
 	ALTROMPN(302, 1, 2, 65536, ROMTYPE_ODD   | ROMTYPE_8BIT, NULL, 0x78eb6fd6, 0xe4048180,0x95f03b6e,0x0746620f,0x5ce48c3f,0x7149b8a0)
+	{ _T("Picmatic Marbella Vice (100Hz TV)"), 0, 0, 0, 0, _T("ALG\0"), 131072, 315, 0, 0, ROMTYPE_ALG, 0, 0, NULL,
+	0xae2d2805, 0x0e392b46,0x15777fe5,0x24ed27ab,0xf8539d4b,0xb1e3ba9d, NULL, NULL, 10 },
+	ALTROMPN(315, 1, 1, 65536, ROMTYPE_EVEN  | ROMTYPE_8BIT, NULL, 0xd2b5e5ca, 0xde765039,0x61076aca,0xd405db9e,0x83bd5334,0xb02bf908)
+	ALTROMPN(315, 1, 2, 65536, ROMTYPE_ODD   | ROMTYPE_8BIT, NULL, 0x2c9ebccb, 0x4e8dcb85,0x26a8debb,0x70f3f567,0x13903ba8,0xbfbb3ed5)
+	// spilz0d4-odd-27-9-95-salvajes-displays-27c512.u4, spilz0d4-even-27-9-95-salvajes-displays-27c512.u5
+	{ _T("Picmatic Tierras Salvajes (100Hz TV)"), 0, 0, 0, 0, _T("ALG\0"), 131072, 314, 0, 0, ROMTYPE_ALG, 0, 0, NULL,
+	0xe6c539ec, 0xa5f70818,0xd93ab33c,0xa4149a50,0xc38b2a13,0x0ee5d7ab, NULL, NULL, 10 },
+	ALTROMPN(314, 1, 1, 65536, ROMTYPE_EVEN  | ROMTYPE_8BIT, NULL, 0x730e4696, 0x4db0cc7d,0x160de5e7,0x0f1d1842,0xfa94adb8,0xee7f954f)
+	ALTROMPN(314, 1, 2, 65536, ROMTYPE_ODD   | ROMTYPE_8BIT, NULL, 0xd46dd5e0, 0x7d808c6e,0xd88bf9a9,0x8cdb468c,0xe71c0952,0xb0b5d7b2)
 
 	{ NULL }
 
@@ -1420,6 +1431,12 @@ int load_keyring (struct uae_prefs *p, const TCHAR *path)
 			break;
 		case 4:
 			_tcscpy (tmp, start_path_data.c_str());
+#ifdef AMIBERRY
+			// Ensure we have a trailing slash
+			if (start_path_data.back() != '/' && start_path_data.back() != '\\') {
+				_tcscat(tmp, _T("/"));
+			}
+#endif
 			_tcscat (tmp, _T("rom.key"));
 			break;
 		case 5:

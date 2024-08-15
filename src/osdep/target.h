@@ -20,8 +20,8 @@
 #define GETBDM(x) (((x) - (((x) / 10000) * 10000)) / 100)
 #define GETBDD(x) ((x) % 100)
 
-#define AMIBERRYVERSION _T("Amiberry v6.2.1 preview (2024-03-16)")
-#define AMIBERRYDATE MAKEBD(2024, 3, 16)
+#define AMIBERRYVERSION _T("Amiberry v6.3.4 preview (2024-08-06)")
+#define AMIBERRYDATE MAKEBD(2024, 8, 6)
 #define COPYRIGHT _T("Copyright (C) 2016-2024 Dimitris Panokostas")
 
 #define IHF_WINDOWHIDDEN 6
@@ -52,7 +52,7 @@ extern void releasecapture(struct AmigaMonitor*);
 extern void enablecapture(int monid);
 extern void disablecapture();
 extern void activationtoggle(int monid, bool inactiveonly);
-extern void create_screenshot();
+extern bool create_screenshot();
 extern int save_thumb(const std::string& path);
 
 extern amiberry_hotkey enter_gui_key;
@@ -102,6 +102,7 @@ string prefix_with_application_directory_path(string currentpath);
 extern void get_configuration_path(char* out, int size);
 extern void set_configuration_path(const std::string& newpath);
 extern void set_nvram_path(const std::string& newpath);
+extern void set_plugins_path(const std::string& newpath);
 extern void set_screenshot_path(const std::string& newpath);
 extern void set_savestate_path(const std::string& newpath);
 extern std::string get_controllers_path();
@@ -110,11 +111,17 @@ extern void set_controllers_path(const std::string& newpath);
 extern std::string get_retroarch_file();
 extern void set_retroarch_file(const std::string& newpath);
 
-extern int get_savedatapath(char* out, int size, int force_internal);
+extern std::string get_savedatapath(bool force_internal);
 extern std::string get_whdbootpath();
 extern void set_whdbootpath(const std::string& newpath);
 extern std::string get_whdload_arch_path();
 extern void set_whdload_arch_path(const std::string& newpath);
+extern std::string get_floppy_path();
+extern void set_floppy_path(const std::string& newpath);
+extern std::string get_harddrive_path();
+extern void set_harddrive_path(const std::string& newpath);
+extern std::string get_cdrom_path();
+extern void set_cdrom_path(const std::string& newpath);
 
 extern bool get_logfile_enabled();
 extern void set_logfile_enabled(bool enabled);
@@ -149,8 +156,8 @@ void init_colors(int monid);
 
 typedef struct
 {
-	char Name[MAX_DPATH];
-	char Path[MAX_DPATH];
+	std::string Name;
+	std::string Path;
 	int ROMType;
 } AvailableROM;
 

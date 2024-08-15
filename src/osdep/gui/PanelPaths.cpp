@@ -10,6 +10,11 @@
 #include "gui_handling.h"
 #include "tinyxml2.h"
 
+extern int console_logging;
+
+static gcn::ScrollArea* scrlPaths;
+static gcn::Window* grpPaths;
+
 static gcn::Label* lblSystemROMs;
 static gcn::TextField* txtSystemROMs;
 static gcn::Button* cmdSystemROMs;
@@ -25,6 +30,10 @@ static gcn::Button* cmdConfigPath;
 static gcn::Label* lblNvramFiles;
 static gcn::TextField* txtNvramFiles;
 static gcn::Button* cmdNvramFiles;
+
+static gcn::Label* lblPluginFiles;
+static gcn::TextField* txtPluginFiles;
+static gcn::Button* cmdPluginFiles;
 
 static gcn::Label* lblScreenshotFiles;
 static gcn::TextField* txtScreenshotFiles;
@@ -46,7 +55,20 @@ static gcn::Label* lblWHDLoadArchPath;
 static gcn::TextField* txtWHDLoadArchPath;
 static gcn::Button* cmdWHDLoadArchPath;
 
+static gcn::Label* lblFloppyPath;
+static gcn::TextField* txtFloppyPath;
+static gcn::Button* cmdFloppyPath;
+
+static gcn::Label* lblCDPath;
+static gcn::TextField* txtCDPath;
+static gcn::Button* cmdCDPath;
+
+static gcn::Label* lblHardDrivesPath;
+static gcn::TextField* txtHardDrivesPath;
+static gcn::Button* cmdHardDrivesPath;
+
 static gcn::CheckBox* chkEnableLogging;
+static gcn::CheckBox* chkLogToConsole;
 static gcn::Label* lblLogfilePath;
 static gcn::TextField* txtLogfilePath;
 static gcn::Button* cmdLogfilePath;
@@ -67,6 +89,7 @@ public:
 		{
 			get_rom_path(tmp, MAX_DPATH);
 			path = SelectFolder("Folder for System ROMs", std::string(tmp));
+			if (!path.empty())
 			{
 				set_rom_path(path);
 			}
@@ -76,6 +99,7 @@ public:
 		{
 			get_configuration_path(tmp, MAX_DPATH);
 			path = SelectFolder("Folder for configuration files", std::string(tmp));
+			if (!path.empty())
 			{
 				set_configuration_path(path);
 			}
@@ -85,14 +109,25 @@ public:
 		{
 			get_nvram_path(tmp, MAX_DPATH);
 			path = SelectFolder("Folder for NVRAM files", std::string(tmp));
+			if (!path.empty())
 			{
 				set_nvram_path(path);
 			}
 			cmdNvramFiles->requestFocus();
 		}
+		else if (actionEvent.getSource() == cmdPluginFiles)
+		{
+			path = SelectFolder("Folder for Plugins", get_plugins_path());
+			if (!path.empty())
+			{
+				set_plugins_path(path);
+			}
+			cmdPluginFiles->requestFocus();
+		}
 		else if (actionEvent.getSource() == cmdScreenshotFiles)
 		{
 			path = SelectFolder("Folder for Screenshot files", get_screenshot_path());
+			if (!path.empty())
 			{
 				set_screenshot_path(path);
 			}
@@ -102,6 +137,7 @@ public:
 		{
 			get_savestate_path(tmp, MAX_DPATH);
 			path = SelectFolder("Folder for Save state files", std::string(tmp));
+			if (!path.empty())
 			{
 				set_savestate_path(path);
 			}
@@ -110,6 +146,7 @@ public:
 		else if (actionEvent.getSource() == cmdControllersPath)
 		{
 			path = SelectFolder("Folder for controller files", get_controllers_path());
+			if (!path.empty())
 			{
 				set_controllers_path(path);
 			}
@@ -120,6 +157,7 @@ public:
 		{
 			const char* filter[] = {"retroarch.cfg", "\0"};
 			path = SelectFile("Select RetroArch Config File", get_retroarch_file(), filter);
+			if (!path.empty())
 			{
 				set_retroarch_file(path);
 			}
@@ -129,6 +167,7 @@ public:
 		else if (actionEvent.getSource() == cmdWHDBootPath)
 		{
 			path = SelectFolder("Folder for WHDBoot files", get_whdbootpath());
+			if (!path.empty())
 			{
 				set_whdbootpath(path);
 			}
@@ -138,16 +177,48 @@ public:
 		else if (actionEvent.getSource() == cmdWHDLoadArchPath)
 		{
 			path = SelectFolder("Folder for WHDLoad Archives", get_whdload_arch_path());
+			if (!path.empty())
 			{
 				set_whdload_arch_path(path);
 			}
 			cmdWHDLoadArchPath->requestFocus();
 		}
 
+		else if (actionEvent.getSource() == cmdFloppyPath)
+		{
+			path = SelectFolder("Folder for Floppies", get_floppy_path());
+			if (!path.empty())
+			{
+				set_floppy_path(path);
+			}
+			cmdFloppyPath->requestFocus();
+		}
+
+		else if (actionEvent.getSource() == cmdCDPath)
+		{
+			path = SelectFolder("Folder for CD-ROMs", get_cdrom_path());
+			if (!path.empty())
+			{
+				set_cdrom_path(path);
+			}
+			cmdCDPath->requestFocus();
+		}
+
+		else if (actionEvent.getSource() == cmdHardDrivesPath)
+		{
+			path = SelectFolder("Folder for Hard Drives", get_harddrive_path());
+			if (!path.empty())
+			{
+				set_harddrive_path(path);
+			}
+			cmdHardDrivesPath->requestFocus();
+		}
+
 		else if (actionEvent.getSource() == cmdLogfilePath)
 		{
-			const char* filter[] = { "amiberry.log", "\0" };
+			const char* filter[] = { ".log", "\0" };
 			path = SelectFile("Select Amiberry Log file", get_logfile_path(), filter, true);
+			if (!path.empty())
 			{
 				set_logfile_path(path);
 			}
@@ -167,8 +238,16 @@ class EnableLoggingActionListener : public gcn::ActionListener
 public:
 	void action(const gcn::ActionEvent& actionEvent) override
 	{
-		set_logfile_enabled(chkEnableLogging->isSelected());
-		logging_init();
+		if (actionEvent.getSource() == chkEnableLogging)
+		{
+			set_logfile_enabled(chkEnableLogging->isSelected());
+			logging_init();
+		}
+		else if (actionEvent.getSource() == chkLogToConsole)
+		{
+			console_logging = chkLogToConsole->isSelected() ? 1 : 0;
+		}
+		
 		RefreshPanelPaths();
 	}
 };
@@ -296,179 +375,319 @@ static DownloadControllerDbActionListener* downloadControllerDbActionListener;
 
 void InitPanelPaths(const config_category& category)
 {
-	const int textFieldWidth = category.panel->getWidth() - 2 * DISTANCE_BORDER - SMALL_BUTTON_WIDTH - DISTANCE_NEXT_X;
-	int yPos = DISTANCE_BORDER;
+	const int textFieldWidth = category.panel->getWidth() - 2 * DISTANCE_BORDER - SMALL_BUTTON_WIDTH * 2 - DISTANCE_NEXT_X;
 	folderButtonActionListener = new FolderButtonActionListener();
+
+	grpPaths = new gcn::Window();
+	grpPaths->setId("grpPaths");
 
 	lblSystemROMs = new gcn::Label("System ROMs:");
 	txtSystemROMs = new gcn::TextField();
 	txtSystemROMs->setSize(textFieldWidth, TEXTFIELD_HEIGHT);
-	txtSystemROMs->setBackgroundColor(colTextboxBackground);
+	txtSystemROMs->setBaseColor(gui_base_color);
+	txtSystemROMs->setBackgroundColor(gui_textbox_background_color);
+	txtSystemROMs->setForegroundColor(gui_foreground_color);
 
 	cmdSystemROMs = new gcn::Button("...");
 	cmdSystemROMs->setId("cmdSystemROMs");
 	cmdSystemROMs->setSize(SMALL_BUTTON_WIDTH, SMALL_BUTTON_HEIGHT);
-	cmdSystemROMs->setBaseColor(gui_baseCol);
+	cmdSystemROMs->setBaseColor(gui_base_color);
+	cmdSystemROMs->setForegroundColor(gui_foreground_color);
 	cmdSystemROMs->addActionListener(folderButtonActionListener);
 
 	lblConfigPath = new gcn::Label("Configuration files:");
 	txtConfigPath = new gcn::TextField();
 	txtConfigPath->setSize(textFieldWidth, TEXTFIELD_HEIGHT);
-	txtConfigPath->setBackgroundColor(colTextboxBackground);
+	txtConfigPath->setBaseColor(gui_base_color);
+	txtConfigPath->setBackgroundColor(gui_textbox_background_color);
+	txtConfigPath->setForegroundColor(gui_foreground_color);
 
 	cmdConfigPath = new gcn::Button("...");
 	cmdConfigPath->setId("cmdConfigPath");
 	cmdConfigPath->setSize(SMALL_BUTTON_WIDTH, SMALL_BUTTON_HEIGHT);
-	cmdConfigPath->setBaseColor(gui_baseCol);
+	cmdConfigPath->setBaseColor(gui_base_color);
+	cmdConfigPath->setForegroundColor(gui_foreground_color);
 	cmdConfigPath->addActionListener(folderButtonActionListener);
 
 	lblNvramFiles = new gcn::Label("NVRAM files:");
 	txtNvramFiles = new gcn::TextField();
 	txtNvramFiles->setSize(textFieldWidth, TEXTFIELD_HEIGHT);
-	txtNvramFiles->setBackgroundColor(colTextboxBackground);
+	txtNvramFiles->setBaseColor(gui_base_color);
+	txtNvramFiles->setForegroundColor(gui_foreground_color);
+	txtNvramFiles->setBackgroundColor(gui_textbox_background_color);
 
 	cmdNvramFiles = new gcn::Button("...");
 	cmdNvramFiles->setId("cmdNvramFiles");
-	cmdNvramFiles->setBaseColor(gui_baseCol);
+	cmdNvramFiles->setBaseColor(gui_base_color);
+	cmdNvramFiles->setForegroundColor(gui_foreground_color);
 	cmdNvramFiles->addActionListener(folderButtonActionListener);
+
+	lblPluginFiles = new gcn::Label("Plugins path:");
+	txtPluginFiles = new gcn::TextField();
+	txtPluginFiles->setSize(textFieldWidth, TEXTFIELD_HEIGHT);
+	txtPluginFiles->setBaseColor(gui_base_color);
+	txtPluginFiles->setForegroundColor(gui_foreground_color);
+	txtPluginFiles->setBackgroundColor(gui_textbox_background_color);
+
+	cmdPluginFiles = new gcn::Button("...");
+	cmdPluginFiles->setId("cmdPluginFiles");
+	cmdPluginFiles->setBaseColor(gui_base_color);
+	cmdPluginFiles->setForegroundColor(gui_foreground_color);
+	cmdPluginFiles->addActionListener(folderButtonActionListener);
 
 	lblScreenshotFiles = new gcn::Label("Screenshots:");
 	txtScreenshotFiles = new gcn::TextField();
 	txtScreenshotFiles->setSize(textFieldWidth, TEXTFIELD_HEIGHT);
-	txtScreenshotFiles->setBackgroundColor(colTextboxBackground);
+	txtScreenshotFiles->setBaseColor(gui_base_color);
+	txtScreenshotFiles->setForegroundColor(gui_foreground_color);
+	txtScreenshotFiles->setBackgroundColor(gui_textbox_background_color);
 
 	cmdScreenshotFiles = new gcn::Button("...");
 	cmdScreenshotFiles->setId("cmdScreenshotFiles");
-	cmdScreenshotFiles->setBaseColor(gui_baseCol);
+	cmdScreenshotFiles->setBaseColor(gui_base_color);
+	cmdScreenshotFiles->setForegroundColor(gui_foreground_color);
 	cmdScreenshotFiles->addActionListener(folderButtonActionListener);
 
 	lblStateFiles = new gcn::Label("Save state files:");
 	txtStateFiles = new gcn::TextField();
 	txtStateFiles->setSize(textFieldWidth, TEXTFIELD_HEIGHT);
-	txtStateFiles->setBackgroundColor(colTextboxBackground);
+	txtStateFiles->setBaseColor(gui_base_color);
+	txtStateFiles->setForegroundColor(gui_foreground_color);
+	txtStateFiles->setBackgroundColor(gui_textbox_background_color);
 
 	cmdStateFiles = new gcn::Button("...");
 	cmdStateFiles->setId("cmdStateFiles");
-	cmdStateFiles->setBaseColor(gui_baseCol);
+	cmdStateFiles->setBaseColor(gui_base_color);
+	cmdStateFiles->setForegroundColor(gui_foreground_color);
 	cmdStateFiles->addActionListener(folderButtonActionListener);
 
 	lblControllersPath = new gcn::Label("Controller files:");
 	txtControllersPath = new gcn::TextField();
 	txtControllersPath->setSize(textFieldWidth, TEXTFIELD_HEIGHT);
-	txtControllersPath->setBackgroundColor(colTextboxBackground);
+	txtControllersPath->setBaseColor(gui_base_color);
+	txtControllersPath->setForegroundColor(gui_foreground_color);
+	txtControllersPath->setBackgroundColor(gui_textbox_background_color);
 
 	cmdControllersPath = new gcn::Button("...");
 	cmdControllersPath->setId("cmdControllersPath");
 	cmdControllersPath->setSize(SMALL_BUTTON_WIDTH, SMALL_BUTTON_HEIGHT);
-	cmdControllersPath->setBaseColor(gui_baseCol);
+	cmdControllersPath->setBaseColor(gui_base_color);
+	cmdControllersPath->setForegroundColor(gui_foreground_color);
 	cmdControllersPath->addActionListener(folderButtonActionListener);
 
 	lblRetroArchFile = new gcn::Label("RetroArch configuration file (retroarch.cfg):");
 	txtRetroArchFile = new gcn::TextField();
 	txtRetroArchFile->setSize(textFieldWidth, TEXTFIELD_HEIGHT);
-	txtRetroArchFile->setBackgroundColor(colTextboxBackground);
+	txtRetroArchFile->setBaseColor(gui_base_color);
+	txtRetroArchFile->setForegroundColor(gui_foreground_color);
+	txtRetroArchFile->setBackgroundColor(gui_textbox_background_color);
 
 	cmdRetroArchFile = new gcn::Button("...");
 	cmdRetroArchFile->setId("cmdRetroArchFile");
 	cmdRetroArchFile->setSize(SMALL_BUTTON_WIDTH, SMALL_BUTTON_HEIGHT);
-	cmdRetroArchFile->setBaseColor(gui_baseCol);
+	cmdRetroArchFile->setBaseColor(gui_base_color);
+	cmdRetroArchFile->setForegroundColor(gui_foreground_color);
 	cmdRetroArchFile->addActionListener(folderButtonActionListener);
 
 	lblWHDBootPath = new gcn::Label("WHDBoot files:");
 	txtWHDBootPath = new gcn::TextField();
 	txtWHDBootPath->setSize(textFieldWidth, TEXTFIELD_HEIGHT);
-	txtWHDBootPath->setBackgroundColor(colTextboxBackground);
+	txtWHDBootPath->setBaseColor(gui_base_color);
+	txtWHDBootPath->setForegroundColor(gui_foreground_color);
+	txtWHDBootPath->setBackgroundColor(gui_textbox_background_color);
 
 	cmdWHDBootPath = new gcn::Button("...");
 	cmdWHDBootPath->setId("cmdWHDBootPath");
 	cmdWHDBootPath->setSize(SMALL_BUTTON_WIDTH, SMALL_BUTTON_HEIGHT);
-	cmdWHDBootPath->setBaseColor(gui_baseCol);
+	cmdWHDBootPath->setBaseColor(gui_base_color);
+	cmdWHDBootPath->setForegroundColor(gui_foreground_color);
 	cmdWHDBootPath->addActionListener(folderButtonActionListener);
 
 	lblWHDLoadArchPath = new gcn::Label("WHDLoad Archives (LHA):");
 	txtWHDLoadArchPath = new gcn::TextField();
 	txtWHDLoadArchPath->setSize(textFieldWidth, TEXTFIELD_HEIGHT);
-	txtWHDLoadArchPath->setBackgroundColor(colTextboxBackground);
+	txtWHDLoadArchPath->setBaseColor(gui_base_color);
+	txtWHDLoadArchPath->setForegroundColor(gui_foreground_color);
+	txtWHDLoadArchPath->setBackgroundColor(gui_textbox_background_color);
 
 	cmdWHDLoadArchPath = new gcn::Button("...");
 	cmdWHDLoadArchPath->setId("cmdWHDLoadArchPath");
 	cmdWHDLoadArchPath->setSize(SMALL_BUTTON_WIDTH, SMALL_BUTTON_HEIGHT);
-	cmdWHDLoadArchPath->setBaseColor(gui_baseCol);
+	cmdWHDLoadArchPath->setBaseColor(gui_base_color);
+	cmdWHDLoadArchPath->setForegroundColor(gui_foreground_color);
 	cmdWHDLoadArchPath->addActionListener(folderButtonActionListener);
+
+	lblFloppyPath = new gcn::Label("Floppies path:");
+	txtFloppyPath = new gcn::TextField();
+	txtFloppyPath->setSize(textFieldWidth, TEXTFIELD_HEIGHT);
+	txtFloppyPath->setBaseColor(gui_base_color);
+	txtFloppyPath->setForegroundColor(gui_foreground_color);
+	txtFloppyPath->setBackgroundColor(gui_textbox_background_color);
+
+	cmdFloppyPath = new gcn::Button("...");
+	cmdFloppyPath->setId("cmdFloppyPath");
+	cmdFloppyPath->setSize(SMALL_BUTTON_WIDTH, SMALL_BUTTON_HEIGHT);
+	cmdFloppyPath->setBaseColor(gui_base_color);
+	cmdFloppyPath->setForegroundColor(gui_foreground_color);
+	cmdFloppyPath->addActionListener(folderButtonActionListener);
+
+	lblCDPath = new gcn::Label("CD-ROMs path:");
+	txtCDPath = new gcn::TextField();
+	txtCDPath->setSize(textFieldWidth, TEXTFIELD_HEIGHT);
+	txtCDPath->setBaseColor(gui_base_color);
+	txtCDPath->setForegroundColor(gui_foreground_color);
+	txtCDPath->setBackgroundColor(gui_textbox_background_color);
+
+	cmdCDPath = new gcn::Button("...");
+	cmdCDPath->setId("cmdCDPath");
+	cmdCDPath->setSize(SMALL_BUTTON_WIDTH, SMALL_BUTTON_HEIGHT);
+	cmdCDPath->setBaseColor(gui_base_color);
+	cmdCDPath->setForegroundColor(gui_foreground_color);
+	cmdCDPath->addActionListener(folderButtonActionListener);
+
+	lblHardDrivesPath = new gcn::Label("Hard drives path:");
+	txtHardDrivesPath = new gcn::TextField();
+	txtHardDrivesPath->setSize(textFieldWidth, TEXTFIELD_HEIGHT);
+	txtHardDrivesPath->setBaseColor(gui_base_color);
+	txtHardDrivesPath->setBackgroundColor(gui_textbox_background_color);
+	txtHardDrivesPath->setForegroundColor(gui_foreground_color);
+
+	cmdHardDrivesPath = new gcn::Button("...");
+	cmdHardDrivesPath->setId("cmdHardDrivesPath");
+	cmdHardDrivesPath->setSize(SMALL_BUTTON_WIDTH, SMALL_BUTTON_HEIGHT);
+	cmdHardDrivesPath->setBaseColor(gui_base_color);
+	cmdHardDrivesPath->setForegroundColor(gui_foreground_color);
+	cmdHardDrivesPath->addActionListener(folderButtonActionListener);
 
 	enableLoggingActionListener = new EnableLoggingActionListener();
 	chkEnableLogging = new gcn::CheckBox("Enable logging", true);
 	chkEnableLogging->setId("chkEnableLogging");
+	chkEnableLogging->setBaseColor(gui_base_color);
+	chkEnableLogging->setBackgroundColor(gui_textbox_background_color);
+	chkEnableLogging->setForegroundColor(gui_foreground_color);
 	chkEnableLogging->addActionListener(enableLoggingActionListener);
+	chkLogToConsole = new gcn::CheckBox("Log to console", false);
+	chkLogToConsole->setId("chkLogToConsole");
+	chkLogToConsole->setBaseColor(gui_base_color);
+	chkLogToConsole->setBackgroundColor(gui_textbox_background_color);
+	chkLogToConsole->setForegroundColor(gui_foreground_color);
+	chkLogToConsole->addActionListener(enableLoggingActionListener);
 	
 	lblLogfilePath = new gcn::Label("Amiberry logfile path:");
 	txtLogfilePath = new gcn::TextField();
 	txtLogfilePath->setSize(textFieldWidth, TEXTFIELD_HEIGHT);
-	txtLogfilePath->setBackgroundColor(colTextboxBackground);
+	txtLogfilePath->setBaseColor(gui_base_color);
+	txtLogfilePath->setBackgroundColor(gui_textbox_background_color);
+	txtLogfilePath->setForegroundColor(gui_foreground_color);
 
 	cmdLogfilePath = new gcn::Button("...");
 	cmdLogfilePath->setId("cmdLogfilePath");
 	cmdLogfilePath->setSize(SMALL_BUTTON_WIDTH, SMALL_BUTTON_HEIGHT);
-	cmdLogfilePath->setBaseColor(gui_baseCol);
+	cmdLogfilePath->setBaseColor(gui_base_color);
+	cmdLogfilePath->setForegroundColor(gui_foreground_color);
 	cmdLogfilePath->addActionListener(folderButtonActionListener);
-	
-	category.panel->add(lblSystemROMs, DISTANCE_BORDER, yPos);
+
+	int yPos = DISTANCE_BORDER;
+	grpPaths->setPosition(DISTANCE_BORDER, DISTANCE_BORDER);
+	grpPaths->setBaseColor(gui_base_color);
+	grpPaths->setBackgroundColor(gui_textbox_background_color);
+
+	grpPaths->add(lblSystemROMs, DISTANCE_BORDER, yPos);
 	yPos += lblSystemROMs->getHeight() + DISTANCE_NEXT_Y / 2;
-	category.panel->add(txtSystemROMs, DISTANCE_BORDER, yPos);
-	category.panel->add(cmdSystemROMs, DISTANCE_BORDER + textFieldWidth + DISTANCE_NEXT_X, yPos);
+	grpPaths->add(txtSystemROMs, DISTANCE_BORDER, yPos);
+	grpPaths->add(cmdSystemROMs, DISTANCE_BORDER + textFieldWidth + DISTANCE_NEXT_X / 2, yPos);
 	yPos += txtSystemROMs->getHeight() + DISTANCE_NEXT_Y;
 
-	category.panel->add(lblConfigPath, DISTANCE_BORDER, yPos);
+	grpPaths->add(lblConfigPath, DISTANCE_BORDER, yPos);
 	yPos += lblConfigPath->getHeight() + DISTANCE_NEXT_Y / 2;
-	category.panel->add(txtConfigPath, DISTANCE_BORDER, yPos);
-	category.panel->add(cmdConfigPath, DISTANCE_BORDER + textFieldWidth + DISTANCE_NEXT_X, yPos);
+	grpPaths->add(txtConfigPath, DISTANCE_BORDER, yPos);
+	grpPaths->add(cmdConfigPath, DISTANCE_BORDER + textFieldWidth + DISTANCE_NEXT_X / 2, yPos);
 	yPos += txtConfigPath->getHeight() + DISTANCE_NEXT_Y;
 
-	category.panel->add(lblNvramFiles, DISTANCE_BORDER, yPos);
+	grpPaths->add(lblNvramFiles, DISTANCE_BORDER, yPos);
 	yPos += lblNvramFiles->getHeight() + DISTANCE_NEXT_Y / 2;
-	category.panel->add(txtNvramFiles, DISTANCE_BORDER, yPos);
-	category.panel->add(cmdNvramFiles, DISTANCE_BORDER + textFieldWidth + DISTANCE_NEXT_X, yPos);
+	grpPaths->add(txtNvramFiles, DISTANCE_BORDER, yPos);
+	grpPaths->add(cmdNvramFiles, DISTANCE_BORDER + textFieldWidth + DISTANCE_NEXT_X / 2, yPos);
 	yPos += txtNvramFiles->getHeight() + DISTANCE_NEXT_Y;
 
-	category.panel->add(lblScreenshotFiles, DISTANCE_BORDER, yPos);
+	grpPaths->add(lblPluginFiles, DISTANCE_BORDER, yPos);
+	yPos += lblPluginFiles->getHeight() + DISTANCE_NEXT_Y / 2;
+	grpPaths->add(txtPluginFiles, DISTANCE_BORDER, yPos);
+	grpPaths->add(cmdPluginFiles, DISTANCE_BORDER + textFieldWidth + DISTANCE_NEXT_X / 2, yPos);
+	yPos += txtPluginFiles->getHeight() + DISTANCE_NEXT_Y;
+
+	grpPaths->add(lblScreenshotFiles, DISTANCE_BORDER, yPos);
 	yPos += lblScreenshotFiles->getHeight() + DISTANCE_NEXT_Y / 2;
-	category.panel->add(txtScreenshotFiles, DISTANCE_BORDER, yPos);
-	category.panel->add(cmdScreenshotFiles, DISTANCE_BORDER + textFieldWidth + DISTANCE_NEXT_X, yPos);
+	grpPaths->add(txtScreenshotFiles, DISTANCE_BORDER, yPos);
+	grpPaths->add(cmdScreenshotFiles, DISTANCE_BORDER + textFieldWidth + DISTANCE_NEXT_X / 2, yPos);
 	yPos += txtScreenshotFiles->getHeight() + DISTANCE_NEXT_Y;
 
-	category.panel->add(lblStateFiles, DISTANCE_BORDER, yPos);
+	grpPaths->add(lblStateFiles, DISTANCE_BORDER, yPos);
 	yPos += lblStateFiles->getHeight() + DISTANCE_NEXT_Y / 2;
-	category.panel->add(txtStateFiles, DISTANCE_BORDER, yPos);
-	category.panel->add(cmdStateFiles, DISTANCE_BORDER + textFieldWidth + DISTANCE_NEXT_X, yPos);
+	grpPaths->add(txtStateFiles, DISTANCE_BORDER, yPos);
+	grpPaths->add(cmdStateFiles, DISTANCE_BORDER + textFieldWidth + DISTANCE_NEXT_X / 2, yPos);
 	yPos += txtStateFiles->getHeight() + DISTANCE_NEXT_Y;
 
-	category.panel->add(lblControllersPath, DISTANCE_BORDER, yPos);
+	grpPaths->add(lblControllersPath, DISTANCE_BORDER, yPos);
 	yPos += lblControllersPath->getHeight() + DISTANCE_NEXT_Y / 2;
-	category.panel->add(txtControllersPath, DISTANCE_BORDER, yPos);
-	category.panel->add(cmdControllersPath, DISTANCE_BORDER + textFieldWidth + DISTANCE_NEXT_X, yPos);
+	grpPaths->add(txtControllersPath, DISTANCE_BORDER, yPos);
+	grpPaths->add(cmdControllersPath, DISTANCE_BORDER + textFieldWidth + DISTANCE_NEXT_X / 2, yPos);
 	yPos += txtControllersPath->getHeight() + DISTANCE_NEXT_Y;
 
-	category.panel->add(lblRetroArchFile, DISTANCE_BORDER, yPos);
+	grpPaths->add(lblRetroArchFile, DISTANCE_BORDER, yPos);
 	yPos += lblRetroArchFile->getHeight() + DISTANCE_NEXT_Y / 2;
-	category.panel->add(txtRetroArchFile, DISTANCE_BORDER, yPos);
-	category.panel->add(cmdRetroArchFile, DISTANCE_BORDER + textFieldWidth + DISTANCE_NEXT_X, yPos);
+	grpPaths->add(txtRetroArchFile, DISTANCE_BORDER, yPos);
+	grpPaths->add(cmdRetroArchFile, DISTANCE_BORDER + textFieldWidth + DISTANCE_NEXT_X / 2, yPos);
 	yPos += txtRetroArchFile->getHeight() + DISTANCE_NEXT_Y;
 
-	category.panel->add(lblWHDBootPath, DISTANCE_BORDER, yPos);
+	grpPaths->add(lblWHDBootPath, DISTANCE_BORDER, yPos);
 	yPos += lblWHDBootPath->getHeight() + DISTANCE_NEXT_Y / 2;
-	category.panel->add(txtWHDBootPath, DISTANCE_BORDER, yPos);
-	category.panel->add(cmdWHDBootPath, DISTANCE_BORDER + textFieldWidth + DISTANCE_NEXT_X, yPos);
+	grpPaths->add(txtWHDBootPath, DISTANCE_BORDER, yPos);
+	grpPaths->add(cmdWHDBootPath, DISTANCE_BORDER + textFieldWidth + DISTANCE_NEXT_X / 2, yPos);
 	yPos += txtWHDBootPath->getHeight() + DISTANCE_NEXT_Y;
 
-	category.panel->add(lblWHDLoadArchPath, DISTANCE_BORDER, yPos);
+	grpPaths->add(lblWHDLoadArchPath, DISTANCE_BORDER, yPos);
 	yPos += lblWHDLoadArchPath->getHeight() + DISTANCE_NEXT_Y / 2;
-	category.panel->add(txtWHDLoadArchPath, DISTANCE_BORDER, yPos);
-	category.panel->add(cmdWHDLoadArchPath, DISTANCE_BORDER + textFieldWidth + DISTANCE_NEXT_X, yPos);
+	grpPaths->add(txtWHDLoadArchPath, DISTANCE_BORDER, yPos);
+	grpPaths->add(cmdWHDLoadArchPath, DISTANCE_BORDER + textFieldWidth + DISTANCE_NEXT_X / 2, yPos);
+	yPos += txtWHDLoadArchPath->getHeight() + DISTANCE_NEXT_Y;
 
-	yPos += txtWHDLoadArchPath->getHeight() + DISTANCE_NEXT_Y * 2;
+	grpPaths->add(lblFloppyPath, DISTANCE_BORDER, yPos);
+	yPos += lblFloppyPath->getHeight() + DISTANCE_NEXT_Y / 2;
+	grpPaths->add(txtFloppyPath, DISTANCE_BORDER, yPos);
+	grpPaths->add(cmdFloppyPath, DISTANCE_BORDER + textFieldWidth + DISTANCE_NEXT_X / 2, yPos);
+	yPos += txtFloppyPath->getHeight() + DISTANCE_NEXT_Y;
+
+	grpPaths->add(lblCDPath, DISTANCE_BORDER, yPos);
+	yPos += lblCDPath->getHeight() + DISTANCE_NEXT_Y / 2;
+	grpPaths->add(txtCDPath, DISTANCE_BORDER, yPos);
+	grpPaths->add(cmdCDPath, DISTANCE_BORDER + textFieldWidth + DISTANCE_NEXT_X / 2, yPos);
+	yPos += txtCDPath->getHeight() + DISTANCE_NEXT_Y;
+
+	grpPaths->add(lblHardDrivesPath, DISTANCE_BORDER, yPos);
+	yPos += lblHardDrivesPath->getHeight() + DISTANCE_NEXT_Y / 2;
+	grpPaths->add(txtHardDrivesPath, DISTANCE_BORDER, yPos);
+	grpPaths->add(cmdHardDrivesPath, DISTANCE_BORDER + textFieldWidth + DISTANCE_NEXT_X / 2, yPos);
+
+	grpPaths->setSize(category.panel->getWidth() - DISTANCE_BORDER * 2 - 14, txtHardDrivesPath->getY() + txtHardDrivesPath->getHeight() + DISTANCE_NEXT_Y);
+	grpPaths->setTitleBarHeight(1);
+
+	scrlPaths = new gcn::ScrollArea(grpPaths);
+	scrlPaths->setId("scrlPaths");
+	scrlPaths->setBaseColor(gui_base_color);
+	scrlPaths->setBackgroundColor(gui_textbox_background_color);
+	scrlPaths->setForegroundColor(gui_foreground_color);
+	scrlPaths->setWidth(category.panel->getWidth() - DISTANCE_BORDER * 2);
+	scrlPaths->setHeight(category.panel->getHeight() - TEXTFIELD_HEIGHT * 6);
+	scrlPaths->setBorderSize(1);
+	scrlPaths->setFocusable(true);
+	category.panel->add(scrlPaths, DISTANCE_BORDER, DISTANCE_BORDER);
+
+	yPos = scrlPaths->getY() + scrlPaths->getHeight() + DISTANCE_NEXT_Y;
 
 	category.panel->add(lblLogfilePath, DISTANCE_BORDER, yPos);
 	category.panel->add(chkEnableLogging, lblLogfilePath->getX() + lblLogfilePath->getWidth() + DISTANCE_NEXT_X * 3, yPos);
+	category.panel->add(chkLogToConsole, chkEnableLogging->getX() + chkEnableLogging->getWidth() + DISTANCE_NEXT_X / 2, yPos);
 	yPos += lblLogfilePath->getHeight() + DISTANCE_NEXT_Y / 2;
 	category.panel->add(txtLogfilePath, DISTANCE_BORDER, yPos);
 	category.panel->add(cmdLogfilePath, DISTANCE_BORDER + textFieldWidth + DISTANCE_NEXT_X, yPos);
@@ -476,21 +695,24 @@ void InitPanelPaths(const config_category& category)
 	rescanROMsButtonActionListener = new RescanROMsButtonActionListener();
 	cmdRescanROMs = new gcn::Button("Rescan Paths");
 	cmdRescanROMs->setSize(cmdRescanROMs->getWidth() + DISTANCE_BORDER, BUTTON_HEIGHT);
-	cmdRescanROMs->setBaseColor(gui_baseCol);
+	cmdRescanROMs->setBaseColor(gui_base_color);
+	cmdRescanROMs->setForegroundColor(gui_foreground_color);
 	cmdRescanROMs->setId("cmdRescanROMs");
 	cmdRescanROMs->addActionListener(rescanROMsButtonActionListener);
 
 	downloadXMLButtonActionListener = new DownloadXMLButtonActionListener();
 	cmdDownloadXML = new gcn::Button("Update WHDLoad XML");
 	cmdDownloadXML->setSize(cmdDownloadXML->getWidth() + DISTANCE_BORDER, BUTTON_HEIGHT);
-	cmdDownloadXML->setBaseColor(gui_baseCol);
+	cmdDownloadXML->setBaseColor(gui_base_color);
+	cmdDownloadXML->setForegroundColor(gui_foreground_color);
 	cmdDownloadXML->setId("cmdDownloadXML");
 	cmdDownloadXML->addActionListener(downloadXMLButtonActionListener);
 
 	downloadControllerDbActionListener = new DownloadControllerDbActionListener();
 	cmdDownloadCtrlDb = new gcn::Button("Update Controllers DB");
 	cmdDownloadCtrlDb->setSize(cmdDownloadCtrlDb->getWidth() + DISTANCE_BORDER, BUTTON_HEIGHT);
-	cmdDownloadCtrlDb->setBaseColor(gui_baseCol);
+	cmdDownloadCtrlDb->setBaseColor(gui_base_color);
+	cmdDownloadCtrlDb->setForegroundColor(gui_foreground_color);
 	cmdDownloadCtrlDb->setId("cmdDownloadCtrlDb");
 	cmdDownloadCtrlDb->addActionListener(downloadControllerDbActionListener);
 	
@@ -517,6 +739,10 @@ void ExitPanelPaths()
 	delete txtNvramFiles;
 	delete cmdNvramFiles;
 
+	delete lblPluginFiles;
+	delete txtPluginFiles;
+	delete cmdPluginFiles;
+
 	delete lblScreenshotFiles;
 	delete txtScreenshotFiles;
 	delete cmdScreenshotFiles;
@@ -541,11 +767,27 @@ void ExitPanelPaths()
 	delete txtWHDLoadArchPath;
 	delete cmdWHDLoadArchPath;
 
+	delete lblFloppyPath;
+	delete txtFloppyPath;
+	delete cmdFloppyPath;
+
+	delete lblCDPath;
+	delete txtCDPath;
+	delete cmdCDPath;
+
+	delete lblHardDrivesPath;
+	delete txtHardDrivesPath;
+	delete cmdHardDrivesPath;
+
 	delete chkEnableLogging;
+	delete chkLogToConsole;
 	delete lblLogfilePath;
 	delete txtLogfilePath;
 	delete cmdLogfilePath;
-	
+
+	delete grpPaths;
+	delete scrlPaths;
+
 	delete cmdRescanROMs;
 	delete cmdDownloadXML;
 	delete cmdDownloadCtrlDb;
@@ -570,6 +812,7 @@ void RefreshPanelPaths()
 	get_nvram_path(tmp, MAX_DPATH);
 	txtNvramFiles->setText(tmp);
 
+	txtPluginFiles->setText(get_plugins_path());
 	txtScreenshotFiles->setText(get_screenshot_path());
 
 	get_savestate_path(tmp, MAX_DPATH);
@@ -579,10 +822,28 @@ void RefreshPanelPaths()
 	txtRetroArchFile->setText(get_retroarch_file());
 	txtWHDBootPath->setText(get_whdbootpath());
 	txtWHDLoadArchPath->setText(get_whdload_arch_path());
+	txtFloppyPath->setText(get_floppy_path());
+	txtCDPath->setText(get_cdrom_path());
+	txtHardDrivesPath->setText(get_harddrive_path());
 
 	chkEnableLogging->setSelected(get_logfile_enabled());
+	chkLogToConsole->setSelected(console_logging > 0);
 	txtLogfilePath->setText(get_logfile_path());
-	
+
+	txtSystemROMs->setEnabled(false);
+	txtConfigPath->setEnabled(false);
+	txtCDPath->setEnabled(false);
+	txtControllersPath->setEnabled(false);
+	txtFloppyPath->setEnabled(false);
+	txtHardDrivesPath->setEnabled(false);
+	txtNvramFiles->setEnabled(false);
+	txtPluginFiles->setEnabled(false);
+	txtRetroArchFile->setEnabled(false);
+	txtScreenshotFiles->setEnabled(false);
+	txtStateFiles->setEnabled(false);
+	txtWHDBootPath->setEnabled(false);
+	txtWHDLoadArchPath->setEnabled(false);
+
 	lblLogfilePath->setEnabled(chkEnableLogging->isSelected());
 	txtLogfilePath->setEnabled(chkEnableLogging->isSelected());
 	cmdLogfilePath->setEnabled(chkEnableLogging->isSelected());
@@ -599,6 +860,7 @@ bool HelpPanelPaths(std::vector<std::string>& helptext)
         helptext.emplace_back("You can enable/disable logging and specify the location of the logfile by using");
         helptext.emplace_back("the relevant options. A logfile is useful when trying to troubleshoot something,");
         helptext.emplace_back("but otherwise this option should be off, as it will incur some extra overhead.");
+		helptext.emplace_back("You can also redirect the log output to console, by enabling that logging option.");
         helptext.emplace_back(" ");
         helptext.emplace_back("The \"Rescan Paths\" button will rescan the paths specified above and refresh the");
         helptext.emplace_back("local cache. This should be done if you added kickstart ROMs for example, in order");
@@ -625,9 +887,11 @@ bool HelpPanelPaths(std::vector<std::string>& helptext)
         helptext.emplace_back(" ");
         helptext.emplace_back("The paths for Amiberry resources include;");
         helptext.emplace_back(" ");
-        helptext.emplace_back("- System ROMs: The Amiga Kickstart files are by default located under 'kickstarts'.");
-        helptext.emplace_back("  After changing the location of the Kickstart ROMs, or adding additional ROMs, ");
-        helptext.emplace_back("  click on the \"Rescan\" button to refresh the list of the available ROMs.");
+		helptext.emplace_back("- System ROMs: The Amiga Kickstart files are by default located under 'kickstarts'.");
+		helptext.emplace_back("  After changing the location of the Kickstart ROMs, or adding any additional ROMs, ");
+		helptext.emplace_back("  click on the \"Rescan\" button to refresh the list of the available ROMs. Please");
+		helptext.emplace_back("  note that MT-32 ROM files may also reside here, or in a \"mt32-roms\" directory");
+		helptext.emplace_back("  at this location, if you wish to use the MT-32 MIDI emulation feature in Amiberry.");
         helptext.emplace_back(" ");
         helptext.emplace_back("- Configuration files: These are located under \"conf\" by default. This is where your");
         helptext.emplace_back("  configurations will be stored, but also where Amiberry keeps the special amiberry.conf");
@@ -637,6 +901,9 @@ bool HelpPanelPaths(std::vector<std::string>& helptext)
         helptext.emplace_back(" ");
         helptext.emplace_back("- NVRAM files: the location where CDTV/CD32 modes will store their NVRAM files.");
         helptext.emplace_back(" ");
+		helptext.emplace_back("- Plugins path: the location where external plugins (such as the CAPSimg or the");
+		helptext.emplace_back("  floppybridge plugin) are stored.");
+		helptext.emplace_back(" ");
         helptext.emplace_back("- Screenshots: any screenshots you take will be saved by default in this location.");
         helptext.emplace_back(" ");
         helptext.emplace_back("- Save state files: if you use them, they will be saved in the specified location.");
@@ -649,6 +916,15 @@ bool HelpPanelPaths(std::vector<std::string>& helptext)
         helptext.emplace_back("  (ie; in RetroPie). Amiberry can pick-up the configuration file from the path specified");
         helptext.emplace_back("  here, and load it automatically, applying any mappings it contains. You can ignore this");
         helptext.emplace_back("  path if you're not using RetroArch.");
+        helptext.emplace_back(" ");
+        helptext.emplace_back("- WHDboot files: This directory contains the files required by the whd-booter process");
+        helptext.emplace_back("  to launch WHDLoad game archives. In normal usage you should not need to change this.");
+        helptext.emplace_back(" ");
+        helptext.emplace_back("- Below that are 4 additional paths, that can be used to better organize your various");
+        helptext.emplace_back("  Amiga files, and streamline GUI operations when it comes to selecting the different");
+        helptext.emplace_back("  types of Amiga media. The file selector buttons in Amiberry associated with each of");
+        helptext.emplace_back("  the media types, will open these path locations. The defaults are shown, but these");
+        helptext.emplace_back("  can be changed to better suit your requirements.");
         helptext.emplace_back(" ");
         helptext.emplace_back("These settings are saved automatically when you click Rescan, or exit the emulator.");
         helptext.emplace_back(" ");

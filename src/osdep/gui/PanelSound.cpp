@@ -85,7 +85,7 @@ static gcn::StringListModel frequency_type_list(frequency);
 static const std::vector<std::string> interpolation = { "Disabled", "Anti", "Sinc", "RH", "Crux" };
 static gcn::StringListModel interpolation_type_list(interpolation);
 
-static const std::vector<std::string> filter = { "Always off", "Emulated (A500)", "Emulated (A1200)", "Always on (A500)", "Always on (A1200)" };
+static const std::vector<std::string> filter = { "Always off", "Emulated (A500)", "Emulated (A1200)", "Always on (A500)", "Always on (A1200)", "Always on (Fixed only)" };
 static gcn::StringListModel filter_type_list(filter);
 
 class SoundActionListener : public gcn::ActionListener
@@ -190,6 +190,10 @@ public:
 			case 4:
 				changed_prefs.sound_filter = FILTER_SOUND_ON;
 				changed_prefs.sound_filter_type = 1;
+				break;
+			case 5:
+				changed_prefs.sound_filter = FILTER_SOUND_ON;
+				changed_prefs.sound_filter_type = 2;
 				break;
 			default:
 				break;
@@ -312,37 +316,56 @@ void InitPanelSound(const config_category& category)
 	lblSoundcard->setAlignment(gcn::Graphics::RIGHT);
 	cboSoundcard = new gcn::DropDown(&soundcard_list);
 	cboSoundcard->setSize(category.panel->getWidth() - lblSoundcard->getWidth() - 8 - DISTANCE_BORDER * 2, cboSoundcard->getHeight());
-	cboSoundcard->setBaseColor(gui_baseCol);
-	cboSoundcard->setBackgroundColor(colTextboxBackground);
+	cboSoundcard->setBaseColor(gui_base_color);
+	cboSoundcard->setBackgroundColor(gui_textbox_background_color);
+	cboSoundcard->setForegroundColor(gui_foreground_color);
+	cboSoundcard->setSelectionColor(gui_selection_color);
 	cboSoundcard->setId("cboSoundcard");
 	cboSoundcard->addActionListener(sound_action_listener);
 
 	chkSystemDefault = new gcn::CheckBox("System default");
 	chkSystemDefault->setId("chkSystemDefault");
+	chkSystemDefault->setBaseColor(gui_base_color);
+	chkSystemDefault->setBackgroundColor(gui_textbox_background_color);
+	chkSystemDefault->setForegroundColor(gui_foreground_color);
 	chkSystemDefault->addActionListener(sound_action_listener);
 
 	optSoundDisabled = new gcn::RadioButton("Disabled", "radiosoundgroup");
 	optSoundDisabled->setId("sndDisable");
+	optSoundDisabled->setBaseColor(gui_base_color);
+	optSoundDisabled->setBackgroundColor(gui_textbox_background_color);
+	optSoundDisabled->setForegroundColor(gui_foreground_color);
 	optSoundDisabled->addActionListener(sound_action_listener);
 
 	optSoundDisabledEmu = new gcn::RadioButton("Disabled, but emulated", "radiosoundgroup");
 	optSoundDisabledEmu->setId("sndDisEmu");
+	optSoundDisabledEmu->setBaseColor(gui_base_color);
+	optSoundDisabledEmu->setBackgroundColor(gui_textbox_background_color);
+	optSoundDisabledEmu->setForegroundColor(gui_foreground_color);
 	optSoundDisabledEmu->addActionListener(sound_action_listener);
 
 	optSoundEmulated = new gcn::RadioButton("Enabled", "radiosoundgroup");
 	optSoundEmulated->setId("sndEmulate");
+	optSoundEmulated->setBaseColor(gui_base_color);
+	optSoundEmulated->setBackgroundColor(gui_textbox_background_color);
+	optSoundEmulated->setForegroundColor(gui_foreground_color);
 	optSoundEmulated->addActionListener(sound_action_listener);
 
 	chkAutoSwitching = new gcn::CheckBox("Automatic switching");
 	chkAutoSwitching->setId("chkAutoSwitching");
+	chkAutoSwitching->setBaseColor(gui_base_color);
+	chkAutoSwitching->setBackgroundColor(gui_textbox_background_color);
+	chkAutoSwitching->setForegroundColor(gui_foreground_color);
 	chkAutoSwitching->addActionListener(sound_action_listener);
 
 	lblFrequency = new gcn::Label("Frequency:");
 	lblFrequency->setAlignment(gcn::Graphics::RIGHT);
 	cboFrequency = new gcn::DropDown(&frequency_type_list);
 	cboFrequency->setSize(90, cboFrequency->getHeight());
-	cboFrequency->setBaseColor(gui_baseCol);
-	cboFrequency->setBackgroundColor(colTextboxBackground);
+	cboFrequency->setBaseColor(gui_base_color);
+	cboFrequency->setBackgroundColor(gui_textbox_background_color);
+	cboFrequency->setForegroundColor(gui_foreground_color);
+	cboFrequency->setSelectionColor(gui_selection_color);
 	cboFrequency->setId("cboFrequency");
 	cboFrequency->addActionListener(sound_action_listener);
 
@@ -350,8 +373,10 @@ void InitPanelSound(const config_category& category)
 	lblSwapChannels->setAlignment(gcn::Graphics::RIGHT);
 	cboSwapChannels = new gcn::DropDown(&swap_channels_list);
 	cboSwapChannels->setSize(95, cboSwapChannels->getHeight());
-	cboSwapChannels->setBaseColor(gui_baseCol);
-	cboSwapChannels->setBackgroundColor(colTextboxBackground);
+	cboSwapChannels->setBaseColor(gui_base_color);
+	cboSwapChannels->setBackgroundColor(gui_textbox_background_color);
+	cboSwapChannels->setForegroundColor(gui_foreground_color);
+	cboSwapChannels->setSelectionColor(gui_selection_color);
 	cboSwapChannels->setId("cboSwapChannels");
 	cboSwapChannels->addActionListener(sound_action_listener);
 
@@ -359,44 +384,54 @@ void InitPanelSound(const config_category& category)
 	lblChannelMode->setAlignment(gcn::Graphics::RIGHT);
 	cboChannelMode = new gcn::DropDown(&channel_mode_list);
 	cboChannelMode->setSize(200, cboChannelMode->getHeight());
-	cboChannelMode->setBaseColor(gui_baseCol);
-	cboChannelMode->setBackgroundColor(colTextboxBackground);
+	cboChannelMode->setBaseColor(gui_base_color);
+	cboChannelMode->setBackgroundColor(gui_textbox_background_color);
+	cboChannelMode->setForegroundColor(gui_foreground_color);
+	cboChannelMode->setSelectionColor(gui_selection_color);
 	cboChannelMode->setId("cboChannelMode");
 	cboChannelMode->addActionListener(sound_action_listener);
 	
 	lblInterpolation = new gcn::Label("Interpolation:");
 	lblInterpolation->setAlignment(gcn::Graphics::RIGHT);
 	cboInterpolation = new gcn::DropDown(&interpolation_type_list);
-	cboInterpolation->setSize(150, cboInterpolation->getHeight());
-	cboInterpolation->setBaseColor(gui_baseCol);
-	cboInterpolation->setBackgroundColor(colTextboxBackground);
+	cboInterpolation->setSize(200, cboInterpolation->getHeight());
+	cboInterpolation->setBaseColor(gui_base_color);
+	cboInterpolation->setBackgroundColor(gui_textbox_background_color);
+	cboInterpolation->setForegroundColor(gui_foreground_color);
+	cboInterpolation->setSelectionColor(gui_selection_color);
 	cboInterpolation->setId("cboInterpol");
 	cboInterpolation->addActionListener(sound_action_listener);
 
 	lblFilter = new gcn::Label("Filter:");
 	lblFilter->setAlignment(gcn::Graphics::RIGHT);
 	cboFilter = new gcn::DropDown(&filter_type_list);
-	cboFilter->setSize(150, cboFilter->getHeight());
-	cboFilter->setBaseColor(gui_baseCol);
-	cboFilter->setBackgroundColor(colTextboxBackground);
+	cboFilter->setSize(200, cboFilter->getHeight());
+	cboFilter->setBaseColor(gui_base_color);
+	cboFilter->setBackgroundColor(gui_textbox_background_color);
+	cboFilter->setForegroundColor(gui_foreground_color);
+	cboFilter->setSelectionColor(gui_selection_color);
 	cboFilter->setId("cboFilter");
 	cboFilter->addActionListener(sound_action_listener);
 
 	lblSeparation = new gcn::Label("Stereo separation:");
 	lblSeparation->setAlignment(gcn::Graphics::RIGHT);
 	cboSeparation = new gcn::DropDown(&separation_list);
-	cboSeparation->setSize(150, cboSeparation->getHeight());
-	cboSeparation->setBaseColor(gui_baseCol);
-	cboSeparation->setBackgroundColor(colTextboxBackground);
+	cboSeparation->setSize(120, cboSeparation->getHeight());
+	cboSeparation->setBaseColor(gui_base_color);
+	cboSeparation->setBackgroundColor(gui_textbox_background_color);
+	cboSeparation->setForegroundColor(gui_foreground_color);
+	cboSeparation->setSelectionColor(gui_selection_color);
 	cboSeparation->setId("cboSeparation");
 	cboSeparation->addActionListener(sound_action_listener);
 	
 	lblStereoDelay = new gcn::Label("Stereo delay:");
 	lblStereoDelay->setAlignment(gcn::Graphics::RIGHT);
 	cboStereoDelay = new gcn::DropDown(&stereo_delay_list);
-	cboStereoDelay->setSize(150, cboStereoDelay->getHeight());
-	cboStereoDelay->setBaseColor(gui_baseCol);
-	cboStereoDelay->setBackgroundColor(colTextboxBackground);
+	cboStereoDelay->setSize(120, cboStereoDelay->getHeight());
+	cboStereoDelay->setBaseColor(gui_base_color);
+	cboStereoDelay->setBackgroundColor(gui_textbox_background_color);
+	cboStereoDelay->setForegroundColor(gui_foreground_color);
+	cboStereoDelay->setSelectionColor(gui_selection_color);
 	cboStereoDelay->setId("cboStereoDelay");
 	cboStereoDelay->addActionListener(sound_action_listener);
 
@@ -404,7 +439,9 @@ void InitPanelSound(const config_category& category)
 	lblPaulaVol->setAlignment(gcn::Graphics::RIGHT);
 	sldPaulaVol = new gcn::Slider(0, 100);
 	sldPaulaVol->setSize(150, SLIDER_HEIGHT);
-	sldPaulaVol->setBaseColor(gui_baseCol);
+	sldPaulaVol->setBaseColor(gui_base_color);
+	sldPaulaVol->setBackgroundColor(gui_textbox_background_color);
+	sldPaulaVol->setForegroundColor(gui_foreground_color);
 	sldPaulaVol->setMarkerLength(20);
 	sldPaulaVol->setStepLength(10);
 	sldPaulaVol->setId("sldPaulaVol");
@@ -415,7 +452,9 @@ void InitPanelSound(const config_category& category)
 	lblCDVol->setAlignment(gcn::Graphics::RIGHT);
 	sldCDVol = new gcn::Slider(0, 100);
 	sldCDVol->setSize(150, SLIDER_HEIGHT);
-	sldCDVol->setBaseColor(gui_baseCol);
+	sldCDVol->setBaseColor(gui_base_color);
+	sldCDVol->setBackgroundColor(gui_textbox_background_color);
+	sldCDVol->setForegroundColor(gui_foreground_color);
 	sldCDVol->setMarkerLength(20);
 	sldCDVol->setStepLength(10);
 	sldCDVol->setId("sldCDVol");
@@ -426,7 +465,9 @@ void InitPanelSound(const config_category& category)
 	lblAHIVol->setAlignment(gcn::Graphics::RIGHT);
 	sldAHIVol = new gcn::Slider(0, 100);
 	sldAHIVol->setSize(150, SLIDER_HEIGHT);
-	sldAHIVol->setBaseColor(gui_baseCol);
+	sldAHIVol->setBaseColor(gui_base_color);
+	sldAHIVol->setBackgroundColor(gui_textbox_background_color);
+	sldAHIVol->setForegroundColor(gui_foreground_color);
 	sldAHIVol->setMarkerLength(20);
 	sldAHIVol->setStepLength(10);
 	sldAHIVol->setId("sldAHIVol");
@@ -437,7 +478,9 @@ void InitPanelSound(const config_category& category)
 	lblMIDIVol->setAlignment(gcn::Graphics::RIGHT);
 	sldMIDIVol = new gcn::Slider(0, 100);
 	sldMIDIVol->setSize(150, SLIDER_HEIGHT);
-	sldMIDIVol->setBaseColor(gui_baseCol);
+	sldMIDIVol->setBaseColor(gui_base_color);
+	sldMIDIVol->setBackgroundColor(gui_textbox_background_color);
+	sldMIDIVol->setForegroundColor(gui_foreground_color);
 	sldMIDIVol->setMarkerLength(20);
 	sldMIDIVol->setStepLength(10);
 	sldMIDIVol->setId("sldMIDIVol");
@@ -446,11 +489,16 @@ void InitPanelSound(const config_category& category)
 
 	chkFloppySound = new gcn::CheckBox("Enable floppy drive sound");
 	chkFloppySound->setId("chkFloppySound");
+	chkFloppySound->setBaseColor(gui_base_color);
+	chkFloppySound->setBackgroundColor(gui_textbox_background_color);
+	chkFloppySound->setForegroundColor(gui_foreground_color);
 	chkFloppySound->addActionListener(sound_action_listener);
 	
 	sldFloppySoundEmpty = new gcn::Slider(0, 100);
 	sldFloppySoundEmpty->setSize(100, SLIDER_HEIGHT);
-	sldFloppySoundEmpty->setBaseColor(gui_baseCol);
+	sldFloppySoundEmpty->setBaseColor(gui_base_color);
+	sldFloppySoundEmpty->setBackgroundColor(gui_textbox_background_color);
+	sldFloppySoundEmpty->setForegroundColor(gui_foreground_color);
 	sldFloppySoundEmpty->setMarkerLength(20);
 	sldFloppySoundEmpty->setStepLength(10);
 	sldFloppySoundEmpty->setId("sldFloppySoundEmpty");
@@ -460,7 +508,9 @@ void InitPanelSound(const config_category& category)
 
 	sldFloppySoundDisk = new gcn::Slider(0, 100);
 	sldFloppySoundDisk->setSize(100, SLIDER_HEIGHT);
-	sldFloppySoundDisk->setBaseColor(gui_baseCol);
+	sldFloppySoundDisk->setBaseColor(gui_base_color);
+	sldFloppySoundDisk->setBackgroundColor(gui_textbox_background_color);
+	sldFloppySoundDisk->setForegroundColor(gui_foreground_color);
 	sldFloppySoundDisk->setMarkerLength(20);
 	sldFloppySoundDisk->setStepLength(10);
 	sldFloppySoundDisk->setId("sldFloppySoundDisk");
@@ -470,7 +520,9 @@ void InitPanelSound(const config_category& category)
 
 	sldSoundBufferSize = new gcn::Slider(0, 10);
 	sldSoundBufferSize->setSize(170, SLIDER_HEIGHT);
-	sldSoundBufferSize->setBaseColor(gui_baseCol);
+	sldSoundBufferSize->setBaseColor(gui_base_color);
+	sldSoundBufferSize->setBackgroundColor(gui_textbox_background_color);
+	sldSoundBufferSize->setForegroundColor(gui_foreground_color);
 	sldSoundBufferSize->setMarkerLength(20);
 	sldSoundBufferSize->setStepLength(1);
 	sldSoundBufferSize->setId("sldSoundBufferSize");
@@ -479,10 +531,16 @@ void InitPanelSound(const config_category& category)
 
 	optSoundPull = new gcn::RadioButton("Pull audio", "radioaudiomethod");
 	optSoundPull->setId("optSoundPull");
+	optSoundPull->setBaseColor(gui_base_color);
+	optSoundPull->setBackgroundColor(gui_textbox_background_color);
+	optSoundPull->setForegroundColor(gui_foreground_color);
 	optSoundPull->addActionListener(sound_action_listener);
 
 	optSoundPush = new gcn::RadioButton("Push audio", "radioaudiomethod");
 	optSoundPush->setId("optSoundPush");
+	optSoundPush->setBaseColor(gui_base_color);
+	optSoundPush->setBackgroundColor(gui_textbox_background_color);
+	optSoundPush->setForegroundColor(gui_foreground_color);
 	optSoundPush->addActionListener(sound_action_listener);
 	
 	grpSound = new gcn::Window("Sound Emulation");
@@ -493,7 +551,8 @@ void InitPanelSound(const config_category& category)
 	grpSound->setMovable(false);
 	grpSound->setSize(optSoundDisabledEmu->getWidth() + DISTANCE_BORDER + 10, chkAutoSwitching->getY() + chkAutoSwitching->getHeight() + DISTANCE_NEXT_Y * 3);
 	grpSound->setTitleBarHeight(TITLEBAR_HEIGHT);
-	grpSound->setBaseColor(gui_baseCol);
+	grpSound->setBaseColor(gui_base_color);
+	grpSound->setForegroundColor(gui_foreground_color);
 
 	grpVolume = new gcn::Window("Volume");
 	grpVolume->add(lblPaulaVol, 10, 10);
@@ -511,7 +570,8 @@ void InitPanelSound(const config_category& category)
 	grpVolume->setMovable(false);
 	grpVolume->setSize(category.panel->getWidth() - DISTANCE_BORDER * 2 - grpSound->getWidth() - DISTANCE_NEXT_X, grpSound->getHeight());
 	grpVolume->setTitleBarHeight(TITLEBAR_HEIGHT);
-	grpVolume->setBaseColor(gui_baseCol);
+	grpVolume->setBaseColor(gui_base_color);
+	grpVolume->setForegroundColor(gui_foreground_color);
 
 	grpFloppySound = new gcn::Window("Floppy Drive Sound Emulation");
 	grpFloppySound->add(chkFloppySound, 10, 10);
@@ -524,7 +584,8 @@ void InitPanelSound(const config_category& category)
 	grpFloppySound->setMovable(false);
 	grpFloppySound->setSize(lblFloppySoundDisk->getWidth() + sldFloppySoundDisk->getWidth() + lblFloppySoundDiskInfo->getWidth() + DISTANCE_NEXT_X + 10 + DISTANCE_BORDER * 2, sldFloppySoundDisk->getY() + sldFloppySoundDisk->getHeight() + TITLEBAR_HEIGHT + DISTANCE_NEXT_Y * 2);
 	grpFloppySound->setTitleBarHeight(TITLEBAR_HEIGHT);
-	grpFloppySound->setBaseColor(gui_baseCol);
+	grpFloppySound->setBaseColor(gui_base_color);
+	grpFloppySound->setForegroundColor(gui_foreground_color);
 
 	grpSoundBufferSize = new gcn::Window("Sound Buffer Size");
 	grpSoundBufferSize->add(sldSoundBufferSize, DISTANCE_BORDER * 2, 10);
@@ -534,7 +595,8 @@ void InitPanelSound(const config_category& category)
 	grpSoundBufferSize->setMovable(false);
 	grpSoundBufferSize->setSize(category.panel->getWidth() - grpFloppySound->getWidth() - DISTANCE_NEXT_X - DISTANCE_BORDER * 2, grpFloppySound->getHeight());
 	grpSoundBufferSize->setTitleBarHeight(TITLEBAR_HEIGHT);
-	grpSoundBufferSize->setBaseColor(gui_baseCol);
+	grpSoundBufferSize->setBaseColor(gui_base_color);
+	grpSoundBufferSize->setForegroundColor(gui_foreground_color);
 	
 	int posY = DISTANCE_BORDER;
 	category.panel->add(lblSoundcard, DISTANCE_BORDER, posY);
@@ -720,7 +782,7 @@ void RefreshPanelSound()
 		i = changed_prefs.sound_filter_type ? 2 : 1;
 		break;
 	case 2:
-		i = changed_prefs.sound_filter_type ? 4 : 3;
+		i = changed_prefs.sound_filter_type == 2 ? 5 : (changed_prefs.sound_filter_type == 1 ? 4 : 3);
 		break;
 	default:
 		break;
@@ -832,19 +894,56 @@ void RefreshPanelSound()
 bool HelpPanelSound(std::vector<std::string>& helptext)
 {
 	helptext.clear();
-	helptext.emplace_back("You can turn on sound emulation with different levels of accuracy and");
-	helptext.emplace_back("choose between Mono and Stereo.");
+	helptext.emplace_back("In this panel you can configure the audio output options of Amiberry.");
 	helptext.emplace_back(" ");
-	helptext.emplace_back("The different types of interpolation have different impact on performance.");
-	helptext.emplace_back("Play with the settings to find the type you like most. You may need headphones");
-	helptext.emplace_back("to really hear the difference between the interpolation types.");
+	helptext.emplace_back("The top dropdown, allows you to select the sound card Amiberry will use. The dropdown");
+	helptext.emplace_back("is populated automatically with every detected device capable of sound output found in");
+	helptext.emplace_back("your system, which can include USB cards or even some game controllers that include ");
+	helptext.emplace_back("headset support.");
 	helptext.emplace_back(" ");
-	helptext.emplace_back("With \"Filter\", you can select the type of the Amiga audio filter.");
+	helptext.emplace_back("The System default checkbox, will instead use whatever audio output device is");
+	helptext.emplace_back("configured as the default in your system.");
 	helptext.emplace_back(" ");
-	helptext.emplace_back(R"(With "Stereo separation" and "Stereo delay", you can adjust how the left )");
-	helptext.emplace_back("and right audio channels of the Amiga are mixed to the left and right channels ");
-	helptext.emplace_back("of your device. A value of 70% for separation and no delay is a good start.");
+	helptext.emplace_back("Sound emulation");
+	helptext.emplace_back("Here you can select if Sound will be Disabled, Disabled but emulated or Enabled.");
+	helptext.emplace_back("If the selected sound card could not be initialized during startup, Amiberry will");
+	helptext.emplace_back("automatically disable the sound emulation.");
 	helptext.emplace_back(" ");
-	helptext.emplace_back("The audio volume of the Amiga (not CD) can be adjusted with \"Paula Volume\".");
+	helptext.emplace_back("Volume");
+	helptext.emplace_back("Here you can select the output volume for the various emulated devices.");
+	helptext.emplace_back(" ");
+	helptext.emplace_back("Options");
+	helptext.emplace_back("You can adjust the options for the sound output below, to tune things to your liking:");
+	helptext.emplace_back("    - Channel mode: Mono, Stereo and other configurations are supported.");
+	helptext.emplace_back("    - Stereo separation: the default value is 70%, which sounds good in most cases.");
+	helptext.emplace_back("    - Interpolation: The default value is Anti. Different of interpolation have a ");
+	helptext.emplace_back("      different impact on performance. You may need headphones to really hear the");
+	helptext.emplace_back("      difference.");
+	helptext.emplace_back("    - Frequency: The default frequency is 44100 Hz, which most sound cards support.");
+	helptext.emplace_back("    - Swap channels: Swap the left/right channels, for Paula, AHI or both.");
+	helptext.emplace_back("    - Stereo delay: By default, there is no stereo delay at all.");
+	helptext.emplace_back("    - Filter: Depending on the model you selected, the relevant filter option will be");
+	helptext.emplace_back("      set here by default.");
+	helptext.emplace_back(" ");
+	helptext.emplace_back("Floppy drive sound emulation");
+	helptext.emplace_back("This option allows you to enable the sound the floppy drive makes in a real Amiga,");
+	helptext.emplace_back("when reading/writing disks. If you enable this option, you can also adjust the volume");
+	helptext.emplace_back("for the sounds produced.");
+	helptext.emplace_back(" ");
+	helptext.emplace_back("Sound buffer size");
+	helptext.emplace_back("The size of the buffer used for producing the sound output, as well as the method used");
+	helptext.emplace_back("for consuming that buffer. The default value is 6 and Pull audio, which uses a");
+	helptext.emplace_back("medium-sized buffer and a callback that consumes it automatically. The size of the");
+	helptext.emplace_back("audio buffer can affect latency and CPU load: too big a buffer and there will be some");
+	helptext.emplace_back("latency before the audio is heard, too small a buffer and the CPU will have more load");
+	helptext.emplace_back("to constantly try and fill the buffer.");
+	helptext.emplace_back(" ");
+	helptext.emplace_back("The Pull audio option enables a callback, which will then automatically consume the");
+	helptext.emplace_back("buffer asynchronously. This works better with a medium-sized buffer (e.g. 6 or 8).");
+	helptext.emplace_back("The Push audio option, will change the behavior to have Amiberry push audio directly");
+	helptext.emplace_back("on an interval, during custom chipset emulation. This option works best with smaller");
+	helptext.emplace_back("buffer sizes (e.g. 1 or even 0) and might help decrease any latency found even");
+	helptext.emplace_back("further, but at the cost of slightly higher CPU usage.");
+	helptext.emplace_back(" ");
 	return true;
 }

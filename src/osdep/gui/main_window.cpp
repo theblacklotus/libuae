@@ -131,6 +131,7 @@ SDL_Surface* gui_screen;
 SDL_Event gui_event;
 SDL_Event touch_event;
 SDL_Texture* gui_texture;
+SDL_Rect gui_renderQuad;
 
 /*
 * Gui SDL stuff we need
@@ -149,10 +150,13 @@ gcn::Container* selectors;
 gcn::ScrollArea* selectorsScrollArea;
 
 // GUI Colors
-gcn::Color gui_baseCol;
-gcn::Color colTextboxBackground;
-gcn::Color colSelectorInactive;
-gcn::Color colSelectorActive;
+gcn::Color gui_base_color;
+gcn::Color gui_textbox_background_color;
+gcn::Color gui_selector_inactive_color;
+gcn::Color gui_selector_active_color;
+gcn::Color gui_selection_color;
+gcn::Color gui_foreground_color;
+gcn::Color gui_font_color;
 
 gcn::FocusHandler* focusHdl;
 gcn::Widget* activeWidget;
@@ -204,13 +208,6 @@ void gui_restart()
 	gui_running = false;
 }
 
-static void (*refresh_func_after_draw)() = nullptr;
-
-void register_refresh_func(void (*func)())
-{
-	refresh_func_after_draw = func;
-}
-
 void focus_bug_workaround(gcn::Window* wnd)
 {
 	// When modal dialog opens via mouse, the dialog will not
@@ -258,8 +255,16 @@ void update_gui_screen()
 	const AmigaMonitor* mon = &AMonitors[0];
 
 	SDL_UpdateTexture(gui_texture, nullptr, gui_screen->pixels, gui_screen->pitch);
-	SDL_RenderCopyEx(mon->gui_renderer, gui_texture, nullptr, nullptr, amiberry_options.rotation_angle, nullptr, SDL_FLIP_NONE);
+	if (amiberry_options.rotation_angle == 0 || amiberry_options.rotation_angle == 180)
+		gui_renderQuad = { 0, 0, gui_screen->w, gui_screen->h };
+	else
+		gui_renderQuad = { -(GUI_WIDTH - GUI_HEIGHT) / 2, (GUI_WIDTH - GUI_HEIGHT) / 2, gui_screen->w, gui_screen->h };
+	
+	SDL_RenderCopyEx(mon->gui_renderer, gui_texture, nullptr, &gui_renderQuad, amiberry_options.rotation_angle, nullptr, SDL_FLIP_NONE);
 	SDL_RenderPresent(mon->gui_renderer);
+
+	if (mon->amiga_window)
+		show_screen(0, 0);
 }
 
 void amiberry_gui_init()
@@ -280,52 +285,47 @@ void amiberry_gui_init()
 		check_error_sdl(gui_screen == nullptr, "Unable to create GUI surface:");
 	}
 
-	if (amiberry_options.single_window_mode)
-	{
-		if (mon->amiga_window)
-		{
-			close_windows(mon);
-		}
-	}
-
 	if (!mon->gui_window)
 	{
+		write_log("Creating Amiberry GUI window...\n");
         Uint32 mode;
-        if (sdl_mode.w >= 800 && sdl_mode.h >= 600 && !kmsdrm_detected)
+        if (!kmsdrm_detected)
         {
-			mode =  SDL_WINDOW_RESIZABLE;
-            if (currprefs.gui_alwaysontop)
-                mode |= SDL_WINDOW_ALWAYS_ON_TOP;
-            if (currprefs.start_minimized)
-                mode |= SDL_WINDOW_HIDDEN;
-            else
-                mode |= SDL_WINDOW_SHOWN;
-            // Set Window allow high DPI by default
-            mode |= SDL_WINDOW_ALLOW_HIGHDPI;
-        }
-        else
-        {
-            // otherwise go for Full-window
-            mode = SDL_WINDOW_FULLSCREEN_DESKTOP;
-        }
+			// Only enable Windowed mode if we're running under x11
+			mode = SDL_WINDOW_RESIZABLE;
+		}
+		else
+		{
+			// otherwise go for Full-window
+			mode = SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_ALWAYS_ON_TOP;
+		}
 
-        if (amiberry_options.rotation_angle != 0 && amiberry_options.rotation_angle != 180)
+        if (currprefs.gui_alwaysontop)
+            mode |= SDL_WINDOW_ALWAYS_ON_TOP;
+        if (currprefs.start_minimized)
+            mode |= SDL_WINDOW_HIDDEN;
+        else
+            mode |= SDL_WINDOW_SHOWN;
+		// Set Window allow high DPI by default
+		mode |= SDL_WINDOW_ALLOW_HIGHDPI;
+
+        if (amiberry_options.rotation_angle == 0 || amiberry_options.rotation_angle == 180)
         {
-            mon->gui_window = SDL_CreateWindow("Amiberry GUI",
-                                               SDL_WINDOWPOS_CENTERED,
-                                               SDL_WINDOWPOS_CENTERED,
-                                               GUI_HEIGHT,
-                                               GUI_WIDTH,
-                                               mode);
+			mon->gui_window = SDL_CreateWindow("Amiberry GUI",
+				SDL_WINDOWPOS_CENTERED,
+				SDL_WINDOWPOS_CENTERED,
+				GUI_WIDTH * amiberry_options.window_scaling,
+				GUI_HEIGHT * amiberry_options.window_scaling,
+				mode);
         }
         else
         {
-            mon->gui_window = SDL_CreateWindow("Amiberry GUI",
-                                               SDL_WINDOWPOS_CENTERED,
-                                               SDL_WINDOWPOS_CENTERED,
-                                               GUI_WIDTH,
-                                               GUI_HEIGHT,
-                                               mode);
+			mon->gui_window = SDL_CreateWindow("Amiberry GUI",
+				SDL_WINDOWPOS_CENTERED,
+				SDL_WINDOWPOS_CENTERED,
+				GUI_HEIGHT * amiberry_options.window_scaling,
+				GUI_WIDTH * amiberry_options.window_scaling,
+				mode);
         }
         check_error_sdl(mon->gui_window == nullptr, "Unable to create window:");
 
@@ -334,23 +334,6 @@ void amiberry_gui_init()
 		{
 			SDL_SetWindowIcon(mon->gui_window, icon_surface);
 			SDL_FreeSurface(icon_surface);
-		}
-	}
-	else if (mon->gui_window)
-	{
-		const auto window_flags = SDL_GetWindowFlags(mon->gui_window);
-		const bool is_maximized = window_flags & SDL_WINDOW_MAXIMIZED;
-		const bool is_fullscreen = window_flags & SDL_WINDOW_FULLSCREEN;
-		if (!is_maximized && !is_fullscreen)
-		{
-			if (amiberry_options.rotation_angle != 0 && amiberry_options.rotation_angle != 180)
-			{
-				SDL_SetWindowSize(mon->gui_window, GUI_HEIGHT, GUI_WIDTH);
-			}
-			else
-			{
-				SDL_SetWindowSize(mon->gui_window, GUI_WIDTH, GUI_HEIGHT);
-			}
 		}
 	}
 
@@ -374,6 +357,8 @@ void amiberry_gui_init()
 
 	SDL_SetRelativeMouseMode(SDL_FALSE);
 	SDL_ShowCursor(SDL_ENABLE);
+
+	SDL_RaiseWindow(mon->gui_window);
 
 	//-------------------------------------------------
 	// Create helpers for GUI framework
@@ -437,6 +422,7 @@ void check_input()
 
 	auto got_event = 0;
 	didata* did = &di_joystick[0];
+	didata* existing_did = nullptr;
 	
 	while (SDL_PollEvent(&gui_event))
 	{
@@ -452,10 +438,18 @@ void check_input()
 			break;
 
 		case SDL_JOYDEVICEADDED:
-		//case SDL_CONTROLLERDEVICEADDED:
+			// Check if we need to re-import joysticks
+			existing_did = &di_joystick[gui_event.jdevice.which];
+			if (existing_did->guid == "")
+			{
+				write_log("GUI: SDL2 Controller/Joystick added, re-running import joysticks...\n");
+				import_joysticks();
+				joystick_refresh_needed = true;
+				RefreshPanelInput();
+			}
+			return;
 		case SDL_JOYDEVICEREMOVED:
-		//case SDL_CONTROLLERDEVICEREMOVED:
-			write_log("GUI: SDL2 Controller/Joystick added or removed, re-running import joysticks...\n");
+			write_log("GUI: SDL2 Controller/Joystick removed, re-running import joysticks...\n");
 			if (inputdevice_devicechange(&currprefs))
 			{
 				import_joysticks();
@@ -493,14 +487,14 @@ void check_input()
 				}
 				else if (SDL_JoystickGetButton(gui_joystick, did->mapping.button[SDL_CONTROLLER_BUTTON_DPAD_UP]) || hat & SDL_HAT_UP)
 				{
-					if (HandleNavigation(DIRECTION_UP))
+					if (handle_navigation(DIRECTION_UP))
 						continue; // Don't change value when enter Slider -> don't send event to control
 					PushFakeKey(SDLK_UP);
 					break;
 				}
 				else if (SDL_JoystickGetButton(gui_joystick, did->mapping.button[SDL_CONTROLLER_BUTTON_DPAD_DOWN]) || hat & SDL_HAT_DOWN)
 				{
-					if (HandleNavigation(DIRECTION_DOWN))
+					if (handle_navigation(DIRECTION_DOWN))
 						continue; // Don't change value when enter Slider -> don't send event to control
 					PushFakeKey(SDLK_DOWN);
 					break;
@@ -529,14 +523,14 @@ void check_input()
 
 				else if (SDL_JoystickGetButton(gui_joystick, did->mapping.button[SDL_CONTROLLER_BUTTON_DPAD_RIGHT]) || hat & SDL_HAT_RIGHT)
 				{
-					if (HandleNavigation(DIRECTION_RIGHT))
+					if (handle_navigation(DIRECTION_RIGHT))
 						continue; // Don't change value when enter Slider -> don't send event to control
 					PushFakeKey(SDLK_RIGHT);
 					break;
 				}
 				else if (SDL_JoystickGetButton(gui_joystick, did->mapping.button[SDL_CONTROLLER_BUTTON_DPAD_LEFT]) || hat & SDL_HAT_LEFT)
 				{
-					if (HandleNavigation(DIRECTION_LEFT))
+					if (handle_navigation(DIRECTION_LEFT))
 						continue; // Don't change value when enter Slider -> don't send event to control
 					PushFakeKey(SDLK_LEFT);
 					break;
@@ -582,7 +576,7 @@ void check_input()
 					if (gui_event.jaxis.value > joystick_dead_zone && last_x != 1)
 					{
 						last_x = 1;
-						if (HandleNavigation(DIRECTION_RIGHT))
+						if (handle_navigation(DIRECTION_RIGHT))
 							continue; // Don't change value when enter Slider -> don't send event to control
 						PushFakeKey(SDLK_RIGHT);
 						break;
@@ -590,7 +584,7 @@ void check_input()
 					if (gui_event.jaxis.value < -joystick_dead_zone && last_x != -1)
 					{
 						last_x = -1;
-						if (HandleNavigation(DIRECTION_LEFT))
+						if (handle_navigation(DIRECTION_LEFT))
 							continue; // Don't change value when enter Slider -> don't send event to control
 						PushFakeKey(SDLK_LEFT);
 						break;
@@ -603,7 +597,7 @@ void check_input()
 					if (gui_event.jaxis.value < -joystick_dead_zone && last_y != -1)
 					{
 						last_y = -1;
-						if (HandleNavigation(DIRECTION_UP))
+						if (handle_navigation(DIRECTION_UP))
 							continue; // Don't change value when enter Slider -> don't send event to control
 						PushFakeKey(SDLK_UP);
 						break;
@@ -611,7 +605,7 @@ void check_input()
 					if (gui_event.jaxis.value > joystick_dead_zone && last_y != 1)
 					{
 						last_y = 1;
-						if (HandleNavigation(DIRECTION_DOWN))
+						if (handle_navigation(DIRECTION_DOWN))
 							continue; // Don't change value when enter Slider -> don't send event to control
 						PushFakeKey(SDLK_DOWN);
 						break;
@@ -688,22 +682,22 @@ void check_input()
 					break;
 
 				case VK_UP:
-					if (HandleNavigation(DIRECTION_UP))
+					if (handle_navigation(DIRECTION_UP))
 						continue; // Don't change value when enter ComboBox -> don't send event to control
 					break;
 
 				case VK_DOWN:
-					if (HandleNavigation(DIRECTION_DOWN))
+					if (handle_navigation(DIRECTION_DOWN))
 						continue; // Don't change value when enter ComboBox -> don't send event to control
 					break;
 
 				case VK_LEFT:
-					if (HandleNavigation(DIRECTION_LEFT))
+					if (handle_navigation(DIRECTION_LEFT))
 						continue; // Don't change value when enter Slider -> don't send event to control
 					break;
 
 				case VK_RIGHT:
-					if (HandleNavigation(DIRECTION_RIGHT))
+					if (handle_navigation(DIRECTION_RIGHT))
 						continue; // Don't change value when enter Slider -> don't send event to control
 					break;
 
@@ -860,13 +854,6 @@ void amiberry_gui_run()
 		if (gui_rtarea_flags_onenter != gui_create_rtarea_flag(&changed_prefs))
 			disable_resume();
 
-		if (refresh_func_after_draw != nullptr)
-		{
-			void (*currFunc)() = refresh_func_after_draw;
-			refresh_func_after_draw = nullptr;
-			currFunc();
-		}
-
 		cap_fps(start);
 	}
 
@@ -998,18 +985,22 @@ void gui_widgets_init()
 	//-------------------------------------------------
 	// Define base colors
 	//-------------------------------------------------
-	gui_baseCol = gui_theme.base_color;
-	colSelectorInactive = gui_theme.selector_inactive;
-	colSelectorActive = gui_theme.selector_active;
-	colTextboxBackground = gui_theme.textbox_background;
+	gui_base_color = gui_theme.base_color;
+	gui_selector_inactive_color = gui_theme.selector_inactive;
+	gui_selector_active_color = gui_theme.selector_active;
+	gui_textbox_background_color = gui_theme.textbox_background;
+	gui_selection_color = gui_theme.selection_color;
+	gui_foreground_color = gui_theme.foreground_color;
+	gui_font_color = gui_theme.font_color;
 
 	//-------------------------------------------------
 	// Create container for main page
 	//-------------------------------------------------
 	gui_top = new gcn::Container();
 	gui_top->setDimension(gcn::Rectangle(0, 0, GUI_WIDTH, GUI_HEIGHT));
-	gui_top->setBaseColor(gui_baseCol);
-	gui_top->setBackgroundColor(gui_baseCol);
+	gui_top->setBaseColor(gui_base_color);
+	gui_top->setBackgroundColor(gui_base_color);
+	gui_top->setForegroundColor(gui_foreground_color);
 	uae_gui->setTop(gui_top);
 
 	//-------------------------------------------------
@@ -1023,6 +1014,7 @@ void gui_widgets_init()
 		font.append(gui_theme.font_name);
 		gui_font = new gcn::SDLTrueTypeFont(font, gui_theme.font_size);
 		gui_font->setAntiAlias(false);
+		gui_font->setColor(gui_font_color);
 	}
 	catch (gcn::Exception& e)
 	{
@@ -1048,25 +1040,29 @@ void gui_widgets_init()
 
 	cmdQuit = new gcn::Button("Quit");
 	cmdQuit->setSize(BUTTON_WIDTH, BUTTON_HEIGHT);
-	cmdQuit->setBaseColor(gui_baseCol);
+	cmdQuit->setBaseColor(gui_base_color);
+	cmdQuit->setForegroundColor(gui_foreground_color);
 	cmdQuit->setId("Quit");
 	cmdQuit->addActionListener(mainButtonActionListener);
 
 	cmdShutdown = new gcn::Button("Shutdown");
 	cmdShutdown->setSize(BUTTON_WIDTH, BUTTON_HEIGHT);
-	cmdShutdown->setBaseColor(gui_baseCol);
+	cmdShutdown->setBaseColor(gui_base_color);
+	cmdShutdown->setForegroundColor(gui_foreground_color);
 	cmdShutdown->setId("Shutdown");
 	cmdShutdown->addActionListener(mainButtonActionListener);
 
 	cmdReset = new gcn::Button("Reset");
 	cmdReset->setSize(BUTTON_WIDTH, BUTTON_HEIGHT);
-	cmdReset->setBaseColor(gui_baseCol);
+	cmdReset->setBaseColor(gui_base_color);
+	cmdReset->setForegroundColor(gui_foreground_color);
 	cmdReset->setId("Reset");
 	cmdReset->addActionListener(mainButtonActionListener);
 
 	cmdRestart = new gcn::Button("Restart");
 	cmdRestart->setSize(BUTTON_WIDTH, BUTTON_HEIGHT);
-	cmdRestart->setBaseColor(gui_baseCol);
+	cmdRestart->setBaseColor(gui_base_color);
+	cmdRestart->setForegroundColor(gui_foreground_color);
 	cmdRestart->setId("Restart");
 	cmdRestart->addActionListener(mainButtonActionListener);
 
@@ -1074,13 +1070,15 @@ void gui_widgets_init()
 	if (emulating)
 		cmdStart->setCaption("Resume");
 	cmdStart->setSize(BUTTON_WIDTH, BUTTON_HEIGHT);
-	cmdStart->setBaseColor(gui_baseCol);
+	cmdStart->setBaseColor(gui_base_color);
+	cmdStart->setForegroundColor(gui_foreground_color);
 	cmdStart->setId("Start");
 	cmdStart->addActionListener(mainButtonActionListener);
 
 	cmdHelp = new gcn::Button("Help");
 	cmdHelp->setSize(BUTTON_WIDTH, BUTTON_HEIGHT);
-	cmdHelp->setBaseColor(gui_baseCol);
+	cmdHelp->setBaseColor(gui_base_color);
+	cmdHelp->setForegroundColor(gui_foreground_color);
 	cmdHelp->setId("Help");
 	cmdHelp->addActionListener(mainButtonActionListener);
 
@@ -1090,14 +1088,16 @@ void gui_widgets_init()
 	constexpr auto workAreaHeight = GUI_HEIGHT - 2 * DISTANCE_BORDER - BUTTON_HEIGHT - DISTANCE_NEXT_Y;
 	selectors = new gcn::Container();
 	selectors->setBorderSize(0);
-	selectors->setBaseColor(colSelectorInactive);
-	selectors->setBackgroundColor(gui_baseCol);
+	selectors->setBaseColor(gui_selector_inactive_color);
+	selectors->setBackgroundColor(gui_base_color);
+	selectors->setForegroundColor(gui_foreground_color);
 
 	constexpr auto selectorScrollAreaWidth = SELECTOR_WIDTH + 2;
 	selectorsScrollArea = new gcn::ScrollArea();
 	selectorsScrollArea->setContent(selectors);
-	selectorsScrollArea->setBaseColor(colSelectorInactive);
-	selectorsScrollArea->setBackgroundColor(colSelectorInactive);
+	selectorsScrollArea->setBaseColor(gui_selector_inactive_color);
+	selectorsScrollArea->setBackgroundColor(gui_selector_inactive_color);
+	selectorsScrollArea->setForegroundColor(gui_foreground_color);
 	selectorsScrollArea->setSize(selectorScrollAreaWidth, workAreaHeight);
 	selectorsScrollArea->setBorderSize(1);
 	
@@ -1108,15 +1108,16 @@ void gui_widgets_init()
 	for (i = 0; categories[i].category != nullptr; ++i)
 	{
 		categories[i].selector = new gcn::SelectorEntry(categories[i].category, prefix_with_data_path(categories[i].imagepath));
-		categories[i].selector->setActiveColor(colSelectorActive);
-		categories[i].selector->setInactiveColor(colSelectorInactive);
+		categories[i].selector->setActiveColor(gui_selector_active_color);
+		categories[i].selector->setInactiveColor(gui_selector_inactive_color);
 		categories[i].selector->setSize(SELECTOR_WIDTH, SELECTOR_HEIGHT);
 		categories[i].selector->addFocusListener(panelFocusListener);
 
 		categories[i].panel = new gcn::Container();
 		categories[i].panel->setId(categories[i].category);
 		categories[i].panel->setSize(GUI_WIDTH - panelStartX - DISTANCE_BORDER, workAreaHeight);
-		categories[i].panel->setBaseColor(gui_baseCol);
+		categories[i].panel->setBaseColor(gui_base_color);
+		categories[i].panel->setForegroundColor(gui_foreground_color);
 		categories[i].panel->setBorderSize(1);
 		categories[i].panel->setVisible(false);
 			

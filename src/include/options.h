@@ -19,8 +19,8 @@
 #include "guisan/color.hpp"
 
 #define UAEMAJOR 6
-#define UAEMINOR 2
-#define UAESUBREV 0
+#define UAEMINOR 3
+#define UAESUBREV 4
 
 #define MAX_AMIGADISPLAYS 1
 
@@ -111,10 +111,6 @@ struct jport
 	bool changed{};
 #ifdef AMIBERRY
 	int mousemap{};
-	std::array<int, SDL_CONTROLLER_BUTTON_MAX> amiberry_custom_none;
-	std::array<int, SDL_CONTROLLER_BUTTON_MAX> amiberry_custom_hotkey;
-	std::array<int, SDL_CONTROLLER_AXIS_MAX> amiberry_custom_axis_none;
-	std::array<int, SDL_CONTROLLER_AXIS_MAX> amiberry_custom_axis_hotkey;
 #endif
 };
 
@@ -175,10 +171,10 @@ struct floppyslot
 	int dfxtype;
 	int dfxsubtype;
 	TCHAR dfxsubtypeid[32];
+	TCHAR dfxprofile[32];
 	int dfxclick;
 	TCHAR dfxclickexternal[256];
 	bool forcedwriteprotect;
-	TCHAR config[256];
 };
 
 #define ASPECTMULT 1024
@@ -513,6 +509,7 @@ struct ramboard
 	bool nodma;
 	bool force16bit;
 	bool chipramtiming;
+	int fault;
 	struct boardloadfile lf;
 };
 struct expansion_params
@@ -547,7 +544,7 @@ struct whdload_custom
 	/**
 	 * \brief The value of this custom field. This will be sent to WHDLoad
 	 */
-	int value;
+	int value = 0;
 	/**
 	 * \brief The type of the custom field: None, Boolean, Bit or List
 	 */
@@ -562,7 +559,7 @@ struct whdload_custom
 	std::vector<std::string> labels;
 	/**
 	 * \brief When the type is a Bit, it can contain multiple entries for the same custom field.
-	 * Each entry has it's own label and a different value that goes with it.
+	 * Each entry has its own label and a different value that goes with it.
 	 */
 	std::vector<std::pair<std::string, int>> label_bit_pairs;
 };
@@ -575,9 +572,30 @@ struct whdload_slave
 	whdload_custom custom3;
 	whdload_custom custom4;
 	whdload_custom custom5;
+
+	whdload_custom& get_custom(const int index)
+	{
+		switch (index)
+		{
+		case 1:
+			return custom1;
+		case 2:
+			return custom2;
+		case 3:
+			return custom3;
+		case 4:
+			return custom4;
+		case 5:
+			return custom5;
+		default:
+			return custom1;
+		}
+	}
 };
 struct whdload_options
 {
+	std::string whdload_filename;
+
 	std::string filename;
 	std::string game_name;
 	std::string sub_path;
@@ -736,6 +754,7 @@ struct uae_prefs
 	bool genlock_alpha;
 	TCHAR genlock_image_file[MAX_DPATH];
 	TCHAR genlock_video_file[MAX_DPATH];
+	TCHAR genlock_font[MAX_DPATH];
 	int monitoremu;
 	int monitoremu_mon;
 	float chipset_refreshrate;
@@ -1048,6 +1067,7 @@ struct uae_prefs
 	bool input_autoswitch;
 	bool input_autoswitchleftright;
 	bool input_advancedmultiinput;
+	bool input_default_onscreen_keyboard;
 	struct uae_input_device joystick_settings[MAX_INPUT_SETTINGS][MAX_INPUT_DEVICES];
 	struct uae_input_device mouse_settings[MAX_INPUT_SETTINGS][MAX_INPUT_DEVICES];
 	struct uae_input_device keyboard_settings[MAX_INPUT_SETTINGS][MAX_INPUT_DEVICES];
@@ -1080,7 +1100,6 @@ struct uae_prefs
 	bool use_retroarch_statebuttons;
 	bool use_retroarch_vkbd;
 
-	
 #endif
 };
 
@@ -1142,6 +1161,7 @@ extern int cfgfile_intval(const TCHAR* option, const TCHAR* value, const TCHAR* 
 extern int cfgfile_strval(const TCHAR* option, const TCHAR* value, const TCHAR* name, int* location, const TCHAR* table[], int more);
 extern int cfgfile_string(const TCHAR* option, const TCHAR* value, const TCHAR* name, TCHAR* location, int maxsz);
 #ifdef AMIBERRY
+extern int cfgfile_floatval(const TCHAR* option, const TCHAR* value, const TCHAR* name, float* location);
 extern int cfgfile_string(const std::string& option, const std::string& value, const std::string& name, std::string& location);
 #endif
 extern int cfgfile_string_escape(const TCHAR* option, const TCHAR* value, const TCHAR* name, TCHAR* location, int maxsz);
@@ -1266,13 +1286,16 @@ struct amiberry_gui_theme
 	gcn::Color selector_inactive;
 	gcn::Color selector_active;
 	gcn::Color textbox_background;
+	gcn::Color selection_color;
+	gcn::Color foreground_color;
 	std::string font_name;
 	int font_size;
+	gcn::Color font_color;
 };
 
 struct amiberry_options
 {
-	bool single_window_mode = false;
+	float window_scaling = 1.0;
 	bool quickstart_start = true;
 	bool read_config_descriptions = true;
 	bool write_logfile = false;
@@ -1290,6 +1313,7 @@ struct amiberry_options
 	bool default_horizontal_centering = false;
 	bool default_vertical_centering = false;
 	int default_scaling_method = -1;
+	int default_gfx_autoresolution = 0;
 	bool default_frameskip = false;
 	bool default_correct_aspect_ratio = true;
 	bool default_auto_crop = false;
@@ -1331,6 +1355,9 @@ struct amiberry_options
 	char gui_theme_selector_inactive[128] = "170, 170, 170";
 	char gui_theme_selector_active[128] = "103, 136, 187";
 	char gui_theme_textbox_background[128] = "220, 220, 220";
+	char gui_theme_selection_color[128] = "195, 217, 217";
+	char gui_theme_foreground_color[128] = "0, 0, 0";
+	char gui_theme_font_color[128] = "0, 0, 0";
 };
 
 extern struct amiberry_options amiberry_options;
