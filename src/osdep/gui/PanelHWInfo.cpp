@@ -33,24 +33,25 @@ static const int COLUMN_SIZE[] =
 {
 	40, // Type
 	200, // Name
-	90, // Start
-	90, // End
-	90, // Size
-	90 // ID
+	100, // Start
+	100, // End
+	100, // Size
+	100 // ID
 };
 
+static gcn::Window* grpHwInfo;
 static gcn::Label* lblList[COL_COUNT];
 static gcn::Container* listEntry[MAX_INFOS];
 static gcn::TextField* listCells[MAX_INFOS][COL_COUNT];
+static gcn::ScrollArea* scrlHwInfo;
 
 void RefreshPanelHWInfo()
 {
-	int row, col;
 	uaecptr highest_expamem = 0;
 
 	expansion_generate_autoconfig_info(&changed_prefs);
 
-	row = 0;
+	int row = 0;
 	for (;;)
 	{
 		TCHAR tmp[200];
@@ -122,7 +123,7 @@ void RefreshPanelHWInfo()
 
 	for (; row < MAX_INFOS; ++row)
 	{
-		for (col = 0; col < COL_COUNT; ++col)
+		for (int col = 0; col < COL_COUNT; ++col)
 			listCells[row][col]->setText("");
 	}
 }
@@ -131,8 +132,13 @@ void RefreshPanelHWInfo()
 void InitPanelHWInfo(const config_category& category)
 {
 	int row, col;
-	int posX;
 	int posY = DISTANCE_BORDER;
+
+	grpHwInfo = new gcn::Window("Hardware Information");
+	grpHwInfo->setPosition(DISTANCE_BORDER, DISTANCE_BORDER);
+	grpHwInfo->setBaseColor(gui_base_color);
+	grpHwInfo->setForegroundColor(gui_foreground_color);
+	grpHwInfo->setTitleBarHeight(1);
 
 	for (col = 0; col < COL_COUNT; ++col)
 		lblList[col] = new gcn::Label(column_caption[col]);
@@ -141,7 +147,8 @@ void InitPanelHWInfo(const config_category& category)
 	{
 		listEntry[row] = new gcn::Container();
 		listEntry[row]->setSize(category.panel->getWidth() - 2 * DISTANCE_BORDER, TEXTFIELD_HEIGHT + 4);
-		listEntry[row]->setBaseColor(gui_baseCol);
+		listEntry[row]->setBaseColor(gui_base_color);
+		listEntry[row]->setForegroundColor(gui_foreground_color);
 		listEntry[row]->setBorderSize(0);
 
 		for (col = 0; col < COL_COUNT; ++col)
@@ -149,16 +156,16 @@ void InitPanelHWInfo(const config_category& category)
 			listCells[row][col] = new gcn::TextField();
 			listCells[row][col]->setSize(COLUMN_SIZE[col] - 8, TEXTFIELD_HEIGHT);
 			listCells[row][col]->setEnabled(false);
-			listCells[row][col]->setBackgroundColor(colTextboxBackground);
-			//if (col == COL_START || col == COL_SIZE || col == COL_ID)
-			//	listCells[row][col]->setFont(gui_fixedfontsmall);
+			listCells[row][col]->setBaseColor(gui_base_color);
+			listCells[row][col]->setBackgroundColor(gui_textbox_background_color);
+			listCells[row][col]->setForegroundColor(gui_foreground_color);
 		}
 	}
 
-	posX = DISTANCE_BORDER;
+	int posX = DISTANCE_BORDER;
 	for (col = 0; col < COL_COUNT; ++col)
 	{
-		category.panel->add(lblList[col], posX, posY);
+		grpHwInfo->add(lblList[col], posX, posY);
 		posX += COLUMN_SIZE[col];
 	}
 	posY += lblList[0]->getHeight() + 2;
@@ -171,9 +178,20 @@ void InitPanelHWInfo(const config_category& category)
 			listEntry[row]->add(listCells[row][col], posX, 2);
 			posX += COLUMN_SIZE[col];
 		}
-		category.panel->add(listEntry[row], DISTANCE_BORDER, posY);
+		grpHwInfo->add(listEntry[row], DISTANCE_BORDER, posY);
 		posY += listEntry[row]->getHeight() + 4;
 	}
+	grpHwInfo->setSize(category.panel->getWidth() + 55, category.panel->getHeight() - DISTANCE_BORDER * 4);
+
+	scrlHwInfo = new gcn::ScrollArea(grpHwInfo);
+	scrlHwInfo->setBackgroundColor(gui_base_color);
+	scrlHwInfo->setForegroundColor(gui_foreground_color);
+	scrlHwInfo->setSelectionColor(gui_selection_color);
+	scrlHwInfo->setBaseColor(gui_base_color);
+	scrlHwInfo->setWidth(category.panel->getWidth() - DISTANCE_BORDER * 2);
+	scrlHwInfo->setHeight(category.panel->getHeight() - DISTANCE_BORDER * 2);
+	scrlHwInfo->setBorderSize(1);
+	category.panel->add(scrlHwInfo, DISTANCE_BORDER, DISTANCE_BORDER);
 
 	RefreshPanelHWInfo();
 }
@@ -191,11 +209,14 @@ void ExitPanelHWInfo()
 			delete listCells[row][col];
 		delete listEntry[row];
 	}
+
+	delete scrlHwInfo;
+	delete grpHwInfo;
 }
 
 bool HelpPanelHWInfo(std::vector<std::string>& helptext)
 {
 	helptext.clear();
-	helptext.emplace_back("This panel shows the information about the configured hardware.");
+	helptext.emplace_back("This panel shows the information about the configured hardware being emulated.");
 	return true;
 }

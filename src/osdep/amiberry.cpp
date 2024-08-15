@@ -50,7 +50,9 @@
 #include "clipboard.h"
 #include "fsdb.h"
 #include "scsidev.h"
-#include "floppybridge/floppybridge_lib.h"
+#ifdef FLOPPYBRIDGE
+#include "floppybridge_lib.h"
+#endif
 #include "threaddep/thread.h"
 #include "uae/uae.h"
 #include "sana2.h"
@@ -288,6 +290,9 @@ std::string controllers_path;
 std::string retroarch_file;
 std::string whdboot_path;
 std::string whdload_arch_path;
+std::string floppy_path;
+std::string harddrive_path;
+std::string cdrom_path;
 std::string logfile_path;
 std::string floppy_sounds_dir;
 std::string data_dir;
@@ -297,6 +302,7 @@ std::string ripper_path;
 std::string input_dir;
 std::string screenshot_dir;
 std::string nvram_dir;
+std::string plugins_dir;
 std::string video_dir;
 std::string amiberry_conf_file;
 
@@ -360,13 +366,13 @@ int sleep_millis_main(int ms)
 
 static void setcursor(struct AmigaMonitor* mon, int oldx, int oldy)
 {
-	int dx = (mon->amigawinclip_rect.x - mon->amigawin_rect.x) + (mon->amigawinclip_rect.w - mon->amigawinclip_rect.x) / 2;
-	int dy = (mon->amigawinclip_rect.y - mon->amigawin_rect.y) + (mon->amigawinclip_rect.h - mon->amigawinclip_rect.y) / 2;
+	int dx = (mon->amigawinclip_rect.x - mon->amigawin_rect.x) + ((mon->amigawinclip_rect.x + mon->amigawinclip_rect.w) - mon->amigawinclip_rect.x) / 2;
+	int dy = (mon->amigawinclip_rect.y - mon->amigawin_rect.y) + ((mon->amigawinclip_rect.y + mon->amigawinclip_rect.h) - mon->amigawinclip_rect.y) / 2;
 	mon->mouseposx = oldx - dx;
 	mon->mouseposy = oldy - dy;
 
-	mon->windowmouse_max_w = (mon->amigawinclip_rect.w - mon->amigawinclip_rect.x) / 2 - 50;
-	mon->windowmouse_max_h = (mon->amigawinclip_rect.h - mon->amigawinclip_rect.y) / 2 - 50;
+	mon->windowmouse_max_w = mon->amigawinclip_rect.w / 2 - 50;
+	mon->windowmouse_max_h = mon->amigawinclip_rect.h / 2 - 50;
 	if (mon->windowmouse_max_w < 10)
 		mon->windowmouse_max_w = 10;
 	if (mon->windowmouse_max_h < 10)
@@ -384,13 +390,13 @@ static void setcursor(struct AmigaMonitor* mon, int oldx, int oldy)
 			return;
 	}
 	mon->mouseposx = mon->mouseposy = 0;
-	if (oldx < 0 || oldy < 0 || oldx > mon->amigawin_rect.w - mon->amigawin_rect.x || oldy > mon->amigawin_rect.h - mon->amigawin_rect.y) {
+	if (oldx < 0 || oldy < 0 || oldx > mon->amigawin_rect.w || oldy > mon->amigawin_rect.h) {
 		write_log(_T("Mouse out of range: mon=%d %dx%d (%dx%d %dx%d)\n"), mon->monitor_id, oldx, oldy,
 			mon->amigawin_rect.x, mon->amigawin_rect.y, mon->amigawin_rect.w, mon->amigawin_rect.h);
 		return;
 	}
-	int cx = (mon->amigawinclip_rect.w - mon->amigawinclip_rect.x) / 2 + mon->amigawin_rect.x + (mon->amigawinclip_rect.x - mon->amigawin_rect.x);
-	int cy = (mon->amigawinclip_rect.h - mon->amigawinclip_rect.y) / 2 + mon->amigawin_rect.y + (mon->amigawinclip_rect.y - mon->amigawin_rect.y);
+	int cx = mon->amigawinclip_rect.w / 2 + mon->amigawin_rect.x + (mon->amigawinclip_rect.x - mon->amigawin_rect.x);
+	int cy = mon->amigawinclip_rect.h / 2 + mon->amigawin_rect.y + (mon->amigawinclip_rect.y - mon->amigawin_rect.y);
 
 	SDL_WarpMouseGlobal(cx, cy);
 }
@@ -431,7 +437,9 @@ bool resumepaused(int priority)
 	if (pausemouseactive)
 	{
 		pausemouseactive = 0;
-		setmouseactive(mon->monitor_id, isfullscreen() > 0 ? 1 : -1);
+		// In Amiberry, we'll do this for Full Window and Fullscreen both.
+		// Otherwise, KMSDRM did not get the focus after resuming from the GUI
+		setmouseactive(mon->monitor_id, isfullscreen() != 0 ? 1 : -1);
 	}
 	pause_emulation = 0;
 	setsystime();
@@ -504,26 +512,45 @@ void setpriority(int prio)
 static void setcursorshape(int monid)
 {
 	struct AmigaMonitor* mon = &AMonitors[monid];
-	if (currprefs.input_tablet && (currprefs.input_mouse_untrap & MOUSEUNTRAP_MAGIC) && currprefs.input_magic_mouse_cursor == MAGICMOUSE_NATIVE_ONLY) {
-		if (!mon->screen_is_picasso || !currprefs.rtg_hardwaresprite)
+	if (currprefs.input_tablet && currprefs.input_magic_mouse_cursor == MAGICMOUSE_NATIVE_ONLY) {
+		if (mon->screen_is_picasso && currprefs.rtg_hardwaresprite)
+			SDL_ShowCursor(SDL_ENABLE);
+		else
 			SDL_ShowCursor(SDL_DISABLE);
 	}
 	else if (!picasso_setwincursor(monid)) {
-		if (SDL_GetCursor() != normalcursor)
-		{
-			SDL_SetCursor(normalcursor);
-			SDL_ShowCursor(SDL_ENABLE);
+		SDL_SetCursor(normalcursor);
+		SDL_ShowCursor(SDL_ENABLE);
+	}
+}
+
+void set_showcursor(BOOL v)
+{
+	if (v) {
+		int vv = SDL_ShowCursor(SDL_ENABLE);
+		if (vv > 1) {
+			SDL_ShowCursor(SDL_DISABLE);
+		}
+	}
+	else {
+		int max = 10;
+		while (max-- > 0) {
+			int vv = SDL_ShowCursor(SDL_DISABLE);
+			if (vv < 0) {
+				while (vv < -1) {
+					vv = SDL_ShowCursor(SDL_ENABLE);
+				}
+				break;
+			}
 		}
 	}
 }
 
 void releasecapture(struct AmigaMonitor* mon)
 {
-	if (!mon_cursorclipped)
-		return;
 	SDL_SetWindowGrab(mon->amiga_window, SDL_FALSE);
 	SDL_SetRelativeMouseMode(SDL_FALSE);
-	SDL_ShowCursor(SDL_ENABLE);
+	set_showcursor(TRUE);
 	mon_cursorclipped = 0;
 }
 
@@ -532,72 +559,8 @@ void updatemouseclip(struct AmigaMonitor* mon)
 	if (mon_cursorclipped) {
 		mon->amigawinclip_rect = mon->amigawin_rect;
 		if (!isfullscreen()) {
-			int idx = 0;
-			//reenumeratemonitors(); //disabled as we only support 1 monitor anyway
-			while (Displays[idx].monitorname) {
-				SDL_Rect out;
-				struct MultiDisplay* md = &Displays[idx];
-				idx++;
-				if (md->rect.x == md->workrect.x && md->rect.w == md->workrect.w
-					&& md->rect.y == md->workrect.y && md->rect.h == md->workrect.h)
-					continue;
-				// not in this monitor?
-				//if (!IntersectRect(&out, &md->rect, &mon->amigawin_rect))
-				//	continue;
-				for (int e = 0; e < 4; e++) {
-					int v1, v2, x, y;
-					int* lp;
-					switch (e)
-					{
-					case 0:
-					default:
-						v1 = md->rect.x;
-						v2 = md->workrect.x;
-						lp = &mon->amigawinclip_rect.x;
-						x = v1 - 1;
-						y = (md->rect.h - md->rect.y) / 2;
-						break;
-					case 1:
-						v1 = md->rect.y;
-						v2 = md->workrect.y;
-						lp = &mon->amigawinclip_rect.y;
-						x = (md->rect.w - md->rect.x) / 2;
-						y = v1 - 1;
-						break;
-					case 2:
-						v1 = md->rect.w;
-						v2 = md->workrect.w;
-						lp = &mon->amigawinclip_rect.w;
-						x = v1 + 1;
-						y = (md->rect.h - md->rect.y) / 2;
-						break;
-					case 3:
-						v1 = md->rect.h;
-						v2 = md->workrect.h;
-						lp = &mon->amigawinclip_rect.h;
-						x = (md->rect.w - md->rect.x) / 2;
-						y = v1 + 1;
-						break;
-					}
-					// is there another monitor sharing this edge?
-					//POINT pt;
-					//pt.x = x;
-					//pt.y = y;
-					//if (MonitorFromPoint(pt, MONITOR_DEFAULTTONULL))
-					//	continue;
-					// restrict mouse clip bounding box to this edge
-					if (e >= 2) {
-						if (*lp > v2) {
-							*lp = v2;
-						}
-					}
-					else {
-						if (*lp < v2) {
-							*lp = v2;
-						}
-					}
-				}
-			}
+			GetWindowRect(mon->amiga_window, &mon->amigawinclip_rect);
+
 			// Too small or invalid?
 			if (mon->amigawinclip_rect.w <= mon->amigawinclip_rect.x + 7 || mon->amigawinclip_rect.h <= mon->amigawinclip_rect.y + 7)
 				mon->amigawinclip_rect = mon->amigawin_rect;
@@ -606,8 +569,8 @@ void updatemouseclip(struct AmigaMonitor* mon)
 #if MOUSECLIP_LOG
 			write_log(_T("CLIP mon=%d %dx%d %dx%d %d\n"), mon->monitor_id, mon->amigawin_rect.left, mon->amigawin_rect.top, mon->amigawin_rect.right, mon->amigawin_rect.bottom, isfullscreen());
 #endif
-			//if (!ClipCursor(&mon->amigawinclip_rect))
-			//	write_log(_T("ClipCursor error %d\n"), GetLastError());
+			//SDL_SetWindowGrab(mon->amiga_window, SDL_TRUE);
+			//SDL_WarpMouseInWindow(mon->amiga_window, mon->amigawinclip_rect.w / 2, mon->amigawinclip_rect.h / 2);
 		}
 	}
 }
@@ -630,26 +593,52 @@ void updatewinrect(struct AmigaMonitor* mon, bool allowfullscreen)
 	}
 }
 
+static bool iswindowfocus(struct AmigaMonitor* mon)
+{
+	bool donotfocus = false;
+	Uint32 flags = SDL_GetWindowFlags(mon->amiga_window);
+
+	if (!(flags & SDL_WINDOW_INPUT_FOCUS)) {
+		donotfocus = true;
+	}
+
+	if (isfullscreen() > 0)
+		donotfocus = false;
+	return donotfocus == false;
+}
+
 bool ismouseactive (void)
 {
 	return mouseactive > 0;
 }
 
-//TODO: Tablet only
-void target_inputdevice_unacquire(void)
+//TODO: maybe implement this
+void target_inputdevice_unacquire(bool full)
 {
-//	close_tablet(tablet);
-//	tablet = NULL;
+	struct AmigaMonitor* mon = &AMonitors[0];
+	//close_tablet(tablet);
+	//tablet = NULL;
+	if (full) {
+		//rawinput_release();
+		SDL_SetWindowGrab(mon->amiga_window, SDL_TRUE);
+	}
 }
 void target_inputdevice_acquire(void)
 {
-//	struct AmigaMonitor* mon = &AMonitors[0];
-//	target_inputdevice_unacquire();
-//	tablet = open_tablet(mon->hAmigaWnd);
+	struct AmigaMonitor* mon = &AMonitors[0];
+	target_inputdevice_unacquire(false);
+	//tablet = open_tablet(mon->hAmigaWnd);
+	//rawinput_alloc();
+	SDL_SetWindowGrab(mon->amiga_window, SDL_TRUE);
 }
 
 static void setmouseactive2(struct AmigaMonitor* mon, int active, bool allowpause)
 {
+#ifdef RETROPLATFORM
+	bool isrp = rp_isactive() != 0;
+#else
+	bool isrp = false;
+#endif
 	int lastmouseactive = mouseactive;
 
 	if (active == 0)
@@ -657,9 +646,12 @@ static void setmouseactive2(struct AmigaMonitor* mon, int active, bool allowpaus
 	if (mouseactive == active && active >= 0)
 		return;
 
-	if (active == 1 && !(currprefs.input_mouse_untrap & MOUSEUNTRAP_MAGIC)) {
-		auto* c = SDL_GetCursor();
-		if (c != normalcursor)
+	if (!isrp && active == 1 && !(currprefs.input_mouse_untrap & MOUSEUNTRAP_MAGIC)) {
+		if (SDL_GetCursor() != normalcursor)
+			return;
+	}
+	if (active) {
+		if (!isrp && !(SDL_GetWindowFlags(mon->amiga_window) & SDL_WINDOW_SHOWN))
 			return;
 	}
 	
@@ -672,13 +664,17 @@ static void setmouseactive2(struct AmigaMonitor* mon, int active, bool allowpaus
 	releasecapture(mon);
 	recapture = 0;
 
-	if (isfullscreen() <= 0 && (currprefs.input_mouse_untrap & MOUSEUNTRAP_MAGIC) && currprefs.input_tablet > 0) {
-		if (mousehack_alive())
-		{
-			setcursorshape(mon->monitor_id);
-			return;
+	if (isfullscreen() <= 0 && (currprefs.input_mouse_untrap & MOUSEUNTRAP_MAGIC)) {
+		if (currprefs.input_tablet > 0) {
+			if (mousehack_alive()) {
+				releasecapture(mon);
+				recapture = 0;
+				return;
+			}
+			SDL_SetCursor(normalcursor);
+		} else {
+			recapture = 0;
 		}
-		SDL_SetCursor(normalcursor);
 	}
 
 	if (mouseactive > 0)
@@ -686,17 +682,19 @@ static void setmouseactive2(struct AmigaMonitor* mon, int active, bool allowpaus
 
 	if (mouseactive) {
 		if (focus) {
-			SDL_RaiseWindow(mon->amiga_window);
-			if (!mon_cursorclipped) {
-				SDL_SetWindowGrab(mon->amiga_window, SDL_TRUE);
-				updatewinrect(mon, false);
-				// SDL2 hides the cursor when Relative mode is enabled
-				// This means that the RTG hardware sprite will no longer be shown,
-				// unless it's configured to use Virtual Mouse (absolute movement).
+#if MOUSECLIP_HIDE
+			set_showcursor(FALSE);
+#endif
+			SDL_SetWindowGrab(mon->amiga_window, SDL_TRUE);
+			// SDL2 hides the cursor when Relative mode is enabled
+			// This means that the RTG hardware sprite will no longer be shown,
+			// unless it's configured to use Virtual Mouse (absolute movement).
+			if (!currprefs.input_tablet)
 				SDL_SetRelativeMouseMode(SDL_TRUE);
-				mon_cursorclipped = mon->monitor_id + 1;
-				//updatemouseclip(mon);
-			}
+			
+			updatewinrect(mon, false);
+			mon_cursorclipped = mon->monitor_id + 1;
+			updatemouseclip(mon);
 			setcursor(mon, -30000, -30000);
 		}
 		if (lastmouseactive != mouseactive) {
@@ -732,13 +730,14 @@ void setmouseactive(int monid, int active)
 	if (active > 1)
 		SDL_RaiseWindow(mon->amiga_window);
 	setmouseactive2(mon, active, true);
+	setcursorshape(monid);
 }
 
 static void amiberry_active(struct AmigaMonitor* mon, int minimized)
 {
 	monitor_off = 0;
 	
-	focus = 1;
+	focus = mon->monitor_id + 1;
 	auto pri = currprefs.inactive_priority;
 	if (!minimized)
 		pri = currprefs.active_capture_priority;
@@ -859,6 +858,7 @@ void disablecapture()
 {
 	setmouseactive(0, 0);
 	focus = 0;
+	mouseinside = false;
 	if (currprefs.active_nocapture_pause && sound_closed == 0) {
 		setpaused(2);
 		sound_closed = 1;
@@ -876,10 +876,24 @@ void setmouseactivexy(int monid, int x, int y, int dir)
 
 	if (isfullscreen() > 0)
 		return;
+	x += mon->amigawin_rect.x;
+	y += mon->amigawin_rect.y;
+	if (dir & 1)
+		x = mon->amigawin_rect.x - diff;
+	if (dir & 2)
+		x = mon->amigawin_rect.x + mon->amigawin_rect.w + diff;
+	if (dir & 4)
+		y = mon->amigawin_rect.y - diff;
+	if (dir & 8)
+		y = mon->amigawin_rect.y + mon->amigawin_rect.h + diff;
+	if (!dir) {
+		x += mon->amigawin_rect.w / 2;
+		y += mon->amigawin_rect.h / 2;
+	}
 
 	if (mouseactive) {
 		disablecapture();
-		SDL_WarpMouseInWindow(mon->amiga_window, x, y);
+		SDL_WarpMouseGlobal(x, y);
 		if (dir) {
 			recapture = 1;
 		}
@@ -1222,396 +1236,457 @@ static void touch_event(unsigned long id, int pressrel, int x, int y, const SDL_
 	tablet_touch(id, pressrel, x, y, rcontrol);
 }
 
-void process_event(SDL_Event event)
+void handle_focus_gained_event(AmigaMonitor* mon)
 {
-	AmigaMonitor* mon = &AMonitors[0];
-	didata* did = &di_joystick[0];
-	int mx, my;
+	amiberry_active(mon, minimized);
+	unsetminimized(mon->monitor_id);
+}
 
-	if (event.type == SDL_WINDOWEVENT && SDL_GetWindowFromID(event.window.windowID) == mon->amiga_window)
+void handle_minimized_event(AmigaMonitor* mon)
+{
+	if (!minimized)
 	{
-		switch (event.window.event)
-		{
-		case SDL_WINDOWEVENT_FOCUS_GAINED:
-			focus = 1;
-			amiberry_active(mon, minimized);
-			unsetminimized(mon->monitor_id);
-			return;
-		case SDL_WINDOWEVENT_MINIMIZED:
-			if (!minimized)
-			{
-				write_log(_T("SIZE_MINIMIZED\n"));
-				setminimized(mon->monitor_id);
-				amiberry_inactive(mon, minimized);
-			}
-			return;
-		case SDL_WINDOWEVENT_RESTORED:
-			amiberry_active(mon, minimized);
-			unsetminimized(mon->monitor_id);
-			return;
-		case SDL_WINDOWEVENT_MOVED:
-			if (isfullscreen() <= 0)
-			{
-				updatewinrect(mon, false);
-				//updatemouseclip(0);
-			}
-			break;
-		case SDL_WINDOWEVENT_ENTER:
-			mouseinside = true;
-			if (currprefs.input_tablet > 0 && currprefs.input_mouse_untrap & MOUSEUNTRAP_MAGIC && isfullscreen() <= 0)
-			{
-				if (mousehack_alive())
-					setcursorshape(mon->monitor_id);
-			}
-			break;
-		case SDL_WINDOWEVENT_LEAVE:
-			mouseinside = false;
-			return;
-		case SDL_WINDOWEVENT_FOCUS_LOST:
-			focus = 0;
-			amiberry_inactive(mon, minimized);
-			if (isfullscreen() <= 0 && currprefs.minimize_inactive)
-				minimizewindow(mon->monitor_id);
-			return;
-		case SDL_WINDOWEVENT_CLOSE:
-			wait_keyrelease();
-			inputdevice_unacquire();
-			uae_quit();
-			return;
-		default:
-			break;
-		}
+		write_log(_T("SIZE_MINIMIZED\n"));
+		setminimized(mon->monitor_id);
+		amiberry_inactive(mon, minimized);
 	}
-	else
-	switch (event.type)
-	{
-	case SDL_QUIT:
-		uae_quit();
-		return;
+}
 
-	case SDL_CLIPBOARDUPDATE:
-		if (currprefs.clipboard_sharing && SDL_HasClipboardText() == SDL_TRUE)
-		{
-			auto* clipboard_host = SDL_GetClipboardText();
-			uae_clipboard_put_text(clipboard_host);
-			SDL_free(clipboard_host);	
-		}
-		return;
-		
-	case SDL_JOYDEVICEADDED:
-	case SDL_JOYDEVICEREMOVED:
+void handle_restored_event(AmigaMonitor* mon)
+{
+	amiberry_active(mon, minimized);
+	unsetminimized(mon->monitor_id);
+}
+
+void handle_moved_event(AmigaMonitor* mon)
+{
+	if (isfullscreen() <= 0)
+	{
+		updatewinrect(mon, false);
+		updatemouseclip(mon);
+	}
+}
+
+void handle_enter_event()
+{
+	mouseinside = true;
+	if (currprefs.input_tablet > 0 && currprefs.input_mouse_untrap & MOUSEUNTRAP_MAGIC && isfullscreen() <= 0)
+	{
+		if (mousehack_alive())
+			setcursorshape(0);
+	}
+}
+
+void handle_leave_event()
+{
+	mouseinside = false;
+}
+
+void handle_focus_lost_event(AmigaMonitor* mon)
+{
+	amiberry_inactive(mon, minimized);
+	if (isfullscreen() <= 0 && currprefs.minimize_inactive)
+		minimizewindow(mon->monitor_id);
+}
+
+void handle_close_event()
+{
+	wait_keyrelease();
+	inputdevice_unacquire();
+	uae_quit();
+}
+
+void handle_window_event(const SDL_Event& event, AmigaMonitor* mon)
+{
+	switch (event.window.event)
+	{
+	case SDL_WINDOWEVENT_FOCUS_GAINED:
+		handle_focus_gained_event(mon);
+		break;
+	case SDL_WINDOWEVENT_MINIMIZED:
+		handle_minimized_event(mon);
+		break;
+	case SDL_WINDOWEVENT_RESTORED:
+		handle_restored_event(mon);
+		break;
+	case SDL_WINDOWEVENT_MOVED:
+		handle_moved_event(mon);
+		break;
+	case SDL_WINDOWEVENT_ENTER:
+		handle_enter_event();
+		break;
+	case SDL_WINDOWEVENT_LEAVE:
+		handle_leave_event();
+		break;
+	case SDL_WINDOWEVENT_FOCUS_LOST:
+		handle_focus_lost_event(mon);
+		break;
+	case SDL_WINDOWEVENT_CLOSE:
+		handle_close_event();
+		break;
+	default:
+		break;
+	}
+}
+
+void handle_quit_event()
+{
+	uae_quit();
+}
+
+void handle_clipboard_update_event()
+{
+	if (currprefs.clipboard_sharing && SDL_HasClipboardText() == SDL_TRUE)
+	{
+		auto* clipboard_host = SDL_GetClipboardText();
+		uae_clipboard_put_text(clipboard_host);
+		SDL_free(clipboard_host);
+	}
+}
+
+void handle_joy_device_event(const int which, const bool removed)
+{
+	const didata* existing_did = &di_joystick[which];
+	if (existing_did->guid.empty() || removed)
+	{
 		write_log("SDL2 Controller/Joystick added or removed, re-running import joysticks...\n");
 		if (inputdevice_devicechange(&currprefs))
 		{
 			import_joysticks();
 			joystick_refresh_needed = true;
 		}
-		return;
-
-	case SDL_CONTROLLERBUTTONDOWN:
-	case SDL_CONTROLLERBUTTONUP:
-		if (event.cbutton.button == enter_gui_button)
-		{
-			inputdevice_add_inputcode(AKS_ENTERGUI, event.cbutton.state == SDL_PRESSED, nullptr);
-			break;
-		}
-		if (quit_key.button && event.cbutton.button == quit_key.button)
-		{
-			uae_quit();
-			break;
-		}
-		if (action_replay_key.button && event.cbutton.button == action_replay_key.button)
-		{
-			inputdevice_add_inputcode(AKS_FREEZEBUTTON, event.cbutton.state == SDL_PRESSED, nullptr);
-			break;
-		}
-		if (fullscreen_key.button && event.cbutton.button == fullscreen_key.button)
-		{
-			inputdevice_add_inputcode(AKS_TOGGLEWINDOWEDFULLSCREEN, event.cbutton.state == SDL_PRESSED, nullptr);
-			break;
-		}
-		if (minimize_key.button && event.cbutton.button == minimize_key.button)
-		{
-			minimizewindow(0);
-			break;
-		}
-		if (event.cbutton.button == vkbd_button)
-		{
-			inputdevice_add_inputcode(AKS_OSK, event.cbutton.state == SDL_PRESSED, nullptr);
-			break;
-		}
-
-		for (auto id = 0; id < MAX_INPUT_DEVICES; id++)
-		{
-			did = &di_joystick[id];
-			if (did->name.empty() || did->joystick_id != event.cbutton.which) continue;
-			if (did->mapping.is_retroarch || !did->is_controller) continue;
-
-			read_controller_button(id, event.cbutton.button, event.cbutton.state);
-			return;
-		}
-		return;
-
-	case SDL_JOYBUTTONDOWN:
-	case SDL_JOYBUTTONUP:
-		for (auto id = 0; id < MAX_INPUT_DEVICES; id++)
-		{
-			did = &di_joystick[id];
-			if (did->joystick_id != event.jbutton.which) continue;
-			if (did->name.empty() || did->joystick_id != id) continue;
-			if (!did->mapping.is_retroarch && did->is_controller) continue;
-
-			if (event.jbutton.button == did->mapping.hotkey_button)
-			{
-				hotkey_pressed = event.jbutton.state == SDL_PRESSED;
-				break;
-			}
-			if (event.jbutton.button == did->mapping.menu_button && hotkey_pressed && event.jbutton.state == SDL_PRESSED)
-			{
-				hotkey_pressed = false;
-				inputdevice_add_inputcode(AKS_ENTERGUI, 1, nullptr);
-				break;
-			}
-			if (event.jbutton.button == did->mapping.vkbd_button && hotkey_pressed && event.jbutton.state == SDL_PRESSED)
-			{
-				hotkey_pressed = false;
-				inputdevice_add_inputcode(AKS_OSK, 1, nullptr);
-				break;
-			}
-
-			read_joystick_button(id, event.jbutton.button, event.jbutton.state);
-			return;
-		}
-		return;
-
-	case SDL_CONTROLLERAXISMOTION:
-		for (auto id = 0; id < MAX_INPUT_DEVICES; id++)
-		{
-			did = &di_joystick[id];
-			if (did->name.empty() || did->joystick_id != event.cbutton.which) continue;
-			if (did->mapping.is_retroarch || !did->is_controller) continue;
-
-			read_controller_axis(id, event.caxis.axis, event.caxis.value);
-			return;
-		}
-		return;
-
-	case SDL_JOYAXISMOTION:
-		for (auto id = 0; id < MAX_INPUT_DEVICES; id++)
-		{
-			did = &di_joystick[id];
-			if (did->joystick_id != event.jaxis.which) continue;
-			if (did->name.empty() || did->joystick_id != id) continue;
-			if (!did->mapping.is_retroarch && did->is_controller) continue;
-
-			read_joystick_axis(event.jaxis.which, event.jaxis.axis, event.jaxis.value);
-			return;
-		}
-		return;
-
-	case SDL_JOYHATMOTION:
-		for (auto id = 0; id < MAX_INPUT_DEVICES; id++)
-		{
-			did = &di_joystick[id];
-			if (did->joystick_id != event.jhat.which) continue;
-			if (did->name.empty() || did->joystick_id != id) continue;
-
-			read_joystick_hat(event.jhat.which, event.jhat.hat, event.jhat.value);
-			return;
-		}
-		return;
-
-	case SDL_KEYDOWN:
-	case SDL_KEYUP:
-		if (event.key.repeat == 0)
-		{
-			if (!isfocus())
-				break;
-			if (isfocus() < 2 && currprefs.input_tablet >= TABLET_MOUSEHACK && (currprefs.input_mouse_untrap & MOUSEUNTRAP_MAGIC))
-				break;
-			
-			int scancode = event.key.keysym.scancode;
-			const int pressed = event.key.state;
-
-			if ((amiberry_options.rctrl_as_ramiga || currprefs.right_control_is_right_win_key)
-				&& scancode == SDL_SCANCODE_RCTRL)
-			{
-				scancode = SDL_SCANCODE_RGUI;
-			}
-			scancode = keyhack(scancode, pressed, 0);
-			if (scancode < 0)
-				return;
-			my_kbd_handler(0, scancode, pressed, true);
-		}
-		break;
-
-	case SDL_FINGERDOWN:
-		if (isfocus())
-		{
-			if (event.button.clicks == 2)
-				setmousebuttonstate(0, 0, 1);
-		}
-		return;
-	case SDL_FINGERUP:
-		if (isfocus())
-		{
-			setmousebuttonstate(0, 0, 0);
-		}
-		return;
-
-	case SDL_MOUSEBUTTONDOWN:
-		if (event.button.button == SDL_BUTTON_LEFT
-			&& !mouseactive
-			&& (!mousehack_alive()
-				|| currprefs.input_tablet != TABLET_MOUSEHACK
-				|| (currprefs.input_tablet == TABLET_MOUSEHACK
-					&& !(currprefs.input_mouse_untrap & MOUSEUNTRAP_MAGIC))
-				|| isfullscreen() > 0))
-		{
-			if (!pause_emulation || currprefs.active_nocapture_pause)
-				setmouseactive(mon->monitor_id, (event.button.clicks == 1 || isfullscreen() > 0) ? 2 : 1);
-		}
-		else if (isfocus())
-		{
-			switch (event.button.button)
-			{
-			case SDL_BUTTON_LEFT:
-				setmousebuttonstate(0, 0, 1);
-				break;
-			case SDL_BUTTON_RIGHT:
-				setmousebuttonstate(0, 1, 1);
-				break;
-			case SDL_BUTTON_MIDDLE:
-				if (currprefs.input_mouse_untrap & MOUSEUNTRAP_MIDDLEBUTTON)
-					activationtoggle(0, true);
-				else
-					setmousebuttonstate(0, 2, 1);
-				break;
-			case SDL_BUTTON_X1:
-				setmousebuttonstate(0, 3, 1);
-				break;
-			case SDL_BUTTON_X2:
-				setmousebuttonstate(0, 4, 1);
-				break;
-			default: break;
-			}
-		}
-		return;
-
-	case SDL_MOUSEBUTTONUP:
-		if (isfocus())
-		{
-			switch (event.button.button)
-			{
-			case SDL_BUTTON_LEFT:
-				setmousebuttonstate(0, 0, 0);
-				break;
-			case SDL_BUTTON_RIGHT:
-				setmousebuttonstate(0, 1, 0);
-				break;
-			case SDL_BUTTON_MIDDLE:
-				if (!(currprefs.input_mouse_untrap & MOUSEUNTRAP_MIDDLEBUTTON))
-					setmousebuttonstate(0, 2, 0);
-				break;
-			case SDL_BUTTON_X1:
-				setmousebuttonstate(0, 3, 0);
-				break;
-			case SDL_BUTTON_X2:
-				setmousebuttonstate(0, 4, 0);
-				break;
-			default: break;
-			}
-		}
-		return;
-
-	case SDL_FINGERMOTION:
-		if (isfocus())
-		{
-			setmousestate(0, 0, event.motion.x, 1);
-			setmousestate(0, 1, event.motion.y, 1);
-		}
-		return;
-
-	case SDL_MOUSEMOTION:
-	{
-		if (event.window.windowID != SDL_GetWindowID(mon->amiga_window))
-			return;
-
-		// This will be useful when/if SDL2 supports more than 1 mouse.
-		// Currently, it always returns 0.
-		auto wm = event.motion.which;
-
-		monitor_off = 0;
-		if (!mouseinside)
-			mouseinside = true;
-
-		mx = event.motion.x;
-		my = event.motion.y;
-
-		//mx -= mon->mouseposx;
-		//my -= mon->mouseposy;
-
-		if (recapture && isfullscreen() <= 0) {
-			enablecapture(mon->monitor_id);
-			return;
-		}
-
-		if (currprefs.input_tablet >= TABLET_MOUSEHACK)
-		{
-			/* absolute */
-			if (mon->screen_is_picasso)
-			{
-				setmousestate(0, 0, mx, 1);
-				setmousestate(0, 1, my, 1);
-			}
-			else
-			{
-				setmousestate(0, 0, (mx / 2) << currprefs.gfx_resolution, 1);
-				setmousestate(0, 1, (my / 2) << currprefs.gfx_vresolution, 1);
-			}
-			return;
-		}
-		if (!focus || !mouseactive)
-			return;
-		/* relative */
-
-		// Disabled as it doesn't seem to work as expected
-		// Instead, we'll use SDL2's recommended Relative mode directly
-		//int mxx = (mon->amigawinclip_rect.x - mon->amigawin_rect.x) + (mon->amigawinclip_rect.w - mon->amigawinclip_rect.x) / 2;
-		//int myy = (mon->amigawinclip_rect.y - mon->amigawin_rect.y) + (mon->amigawinclip_rect.h - mon->amigawinclip_rect.y) / 2;
-		//mx = mx - mxx;
-		//my = my - myy;
-		//setmousestate(0, 0, mx, 0);
-		//setmousestate(0, 1, my, 0);
-		setmousestate(0, 0, event.motion.xrel, 0);
-		setmousestate(0, 1, event.motion.yrel, 0);
-
-		//if (mon_cursorclipped || mouseactive)
-		//	setcursor(mon, event.motion.x, event.motion.y);
 	}
-	break;
+}
 
-	case SDL_MOUSEWHEEL:
-		if (isfocus() > 0)
-		{
-			const auto val_y = event.wheel.y;
-			setmousestate(0, 2, val_y, 0);
-			if (val_y < 0)
-				setmousebuttonstate(0, 3 + 0, -1);
-			else if (val_y > 0)
-				setmousebuttonstate(0, 3 + 1, -1);
+void handle_controller_button_event(const SDL_Event& event)
+{
+	const auto button = event.cbutton.button;
+	const auto state = event.cbutton.state == SDL_PRESSED;
 
-			const auto val_x = event.wheel.x;
-			setmousestate(0, 3, val_x, 0);
-			if (val_x < 0)
-				setmousebuttonstate(0, 3 + 2, -1);
-			else if (val_x > 0)
-				setmousebuttonstate(0, 3 + 3, -1);
+	if (button == enter_gui_button) {
+		inputdevice_add_inputcode(AKS_ENTERGUI, state, nullptr);
+	}
+	else if (quit_key.button && button == quit_key.button) {
+		uae_quit();
+	}
+	else if (action_replay_key.button && button == action_replay_key.button) {
+		inputdevice_add_inputcode(AKS_FREEZEBUTTON, state, nullptr);
+	}
+	else if (fullscreen_key.button && button == fullscreen_key.button) {
+		inputdevice_add_inputcode(AKS_TOGGLEWINDOWFULLWINDOW, state, nullptr);
+	}
+	else if (minimize_key.button && button == minimize_key.button) {
+		minimizewindow(0);
+	}
+	else if (button == vkbd_button) {
+		inputdevice_add_inputcode(AKS_OSK, state, nullptr);
+	}
+	else {
+		for (auto id = 0; id < MAX_INPUT_DEVICES; id++) {
+			const didata* did = &di_joystick[id];
+			if (did->name.empty() || did->joystick_id != event.caxis.which || did->mapping.is_retroarch || !did->is_controller) continue;
+
+			read_controller_button(id, button, state);
+			break;
 		}
+	}
+}
+
+void handle_joy_button_event(const SDL_Event& event)
+{
+	const auto button = event.jbutton.button;
+	const auto state = event.jbutton.state == SDL_PRESSED;
+
+	for (auto id = 0; id < MAX_INPUT_DEVICES; id++)
+	{
+		const didata* did = &di_joystick[id];
+		if (did->joystick_id != event.jbutton.which || did->name.empty() || did->joystick_id != id || (!did->mapping.is_retroarch && did->is_controller)) continue;
+
+		if (button == did->mapping.hotkey_button)
+		{
+			hotkey_pressed = state;
+			break;
+		}
+		if (button == did->mapping.menu_button && hotkey_pressed && state)
+		{
+			hotkey_pressed = false;
+			inputdevice_add_inputcode(AKS_ENTERGUI, 1, nullptr);
+			break;
+		}
+		if (button == did->mapping.vkbd_button && hotkey_pressed && state)
+		{
+			hotkey_pressed = false;
+			inputdevice_add_inputcode(AKS_OSK, 1, nullptr);
+			break;
+		}
+
+		read_joystick_buttons(id);
+		return;
+	}
+}
+
+void handle_controller_axis_motion_event(const SDL_Event& event)
+{
+	const auto axis = event.caxis.axis;
+	const auto value = event.caxis.value;
+
+	for (auto id = 0; id < MAX_INPUT_DEVICES; id++)
+	{
+		const didata* did = &di_joystick[id];
+		if (did->name.empty() || did->joystick_id != event.caxis.which || did->mapping.is_retroarch || !did->is_controller) continue;
+
+		read_controller_axis(id, axis, value);
+	}
+}
+
+void handle_joy_axis_motion_event(const SDL_Event& event)
+{
+	const auto axis = event.jaxis.axis;
+	const auto value = event.jaxis.value;
+	const auto which = event.jaxis.which;
+
+	for (auto id = 0; id < MAX_INPUT_DEVICES; id++)
+	{
+		const didata* did = &di_joystick[id];
+		if (did->name.empty() || did->joystick_id != which || did->joystick_id != id || (!did->mapping.is_retroarch && did->is_controller)) continue;
+
+		read_joystick_axis(which, axis, value);
+	}
+}
+
+void handle_joy_hat_motion_event(const SDL_Event& event)
+{
+	const auto hat = event.jhat.hat;
+	const auto value = event.jhat.value;
+	const auto which = event.jhat.which;
+
+	for (auto id = 0; id < MAX_INPUT_DEVICES; id++)
+	{
+		const didata* did = &di_joystick[id];
+		if (did->name.empty() || did->joystick_id != which || did->joystick_id != id || (!did->mapping.is_retroarch && did->is_controller)) continue;
+
+		read_joystick_hat(which, hat, value);
+		break;
+	}
+}
+
+void handle_key_event(const SDL_Event& event)
+{
+	if (event.key.repeat != 0 || !isfocus() || (isfocus() < 2 && currprefs.input_tablet >= TABLET_MOUSEHACK && (currprefs.input_mouse_untrap & MOUSEUNTRAP_MAGIC)))
 		return;
 
-	default:
-		break;
+	int scancode = event.key.keysym.scancode;
+	const auto pressed = event.key.state;
+
+	if ((amiberry_options.rctrl_as_ramiga || currprefs.right_control_is_right_win_key) && scancode == SDL_SCANCODE_RCTRL)
+	{
+		scancode = SDL_SCANCODE_RGUI;
+	}
+
+	scancode = keyhack(scancode, pressed, 0);
+	if (scancode >= 0)
+	{
+		my_kbd_handler(0, scancode, pressed, true);
+	}
+}
+
+void handle_finger_event(const SDL_Event& event)
+{
+	if (!isfocus() || event.tfinger.fingerId != 0)
+		return;
+
+	if (event.tfinger.type == SDL_FINGERDOWN && event.button.clicks == 2)
+	{
+		setmousebuttonstate(0, 0, 1);
+	}
+	else if (event.tfinger.type == SDL_FINGERUP)
+	{
+		setmousebuttonstate(0, 0, 0);
+	}
+}
+
+void handle_mouse_button_event(const SDL_Event& event, const AmigaMonitor* mon)
+{
+	const auto button = event.button.button;
+	const auto state = event.button.state == SDL_PRESSED;
+	const auto clicks = event.button.clicks;
+
+	if (button == SDL_BUTTON_LEFT && !mouseactive && (!mousehack_alive() || currprefs.input_tablet != TABLET_MOUSEHACK ||
+		(currprefs.input_tablet == TABLET_MOUSEHACK && !(currprefs.input_mouse_untrap & MOUSEUNTRAP_MAGIC))))
+	{
+		mouseinside = true;
+		if (!pause_emulation || currprefs.active_nocapture_pause)
+			setmouseactive(mon->monitor_id, (clicks == 1 || isfullscreen() > 0) ? 2 : 1);
+	}
+	else if (isfocus())
+	{
+		switch (button)
+		{
+		case SDL_BUTTON_LEFT:
+			setmousebuttonstate(0, 0, state);
+			break;
+		case SDL_BUTTON_RIGHT:
+			setmousebuttonstate(0, 1, state);
+			break;
+		case SDL_BUTTON_MIDDLE:
+			if (currprefs.input_mouse_untrap & MOUSEUNTRAP_MIDDLEBUTTON)
+				activationtoggle(0, true);
+			else
+				setmousebuttonstate(0, 2, state);
+			break;
+		case SDL_BUTTON_X1:
+			setmousebuttonstate(0, 3, state);
+			break;
+		case SDL_BUTTON_X2:
+			setmousebuttonstate(0, 4, state);
+			break;
+		default: break;
+		}
+	}
+}
+
+void handle_finger_motion_event(const SDL_Event& event)
+{
+	if (isfocus() && event.tfinger.fingerId == 0)
+	{
+		setmousestate(0, 0, event.tfinger.x, 1);
+		setmousestate(0, 1, event.tfinger.y, 1);
+	}
+}
+
+void handle_mouse_motion_event(const SDL_Event& event, const AmigaMonitor* mon)
+{
+	monitor_off = 0;
+
+	if (mouseinside && recapture && isfullscreen() <= 0) {
+		enablecapture(mon->monitor_id);
+		return;
+	}
+
+	if (isfocus() <= 0) return;
+
+	const auto is_picasso = mon->screen_is_picasso;
+	const auto x = event.motion.x;
+	const auto y = event.motion.y;
+	const auto xrel = event.motion.xrel;
+	const auto yrel = event.motion.yrel;
+
+	if (currprefs.input_tablet >= TABLET_MOUSEHACK)
+	{
+		/* absolute */
+		setmousestate(0, 0, is_picasso ? x : (x / 2) << currprefs.gfx_resolution, 1);
+		setmousestate(0, 1, is_picasso ? y : (y / 2) << currprefs.gfx_vresolution, 1);
+	}
+	else
+	{
+		/* relative */
+		setmousestate(0, 0, xrel, 0);
+		setmousestate(0, 1, yrel, 0);
+	}
+}
+
+void handle_mouse_wheel_event(const SDL_Event& event)
+{
+	if (isfocus() <= 0) return;
+	
+	const auto val_y = event.wheel.y;
+	const auto val_x = event.wheel.x;
+
+	setmousestate(0, 2, val_y, 0);
+	setmousestate(0, 3, val_x, 0);
+
+	if (val_y < 0)
+		setmousebuttonstate(0, 3, -1);
+	else if (val_y > 0)
+		setmousebuttonstate(0, 4, -1);
+
+	if (val_x < 0)
+		setmousebuttonstate(0, 5, -1);
+	else if (val_x > 0)
+		setmousebuttonstate(0, 6, -1);
+}
+
+void process_event(const SDL_Event& event)
+{
+	AmigaMonitor* mon = &AMonitors[0];
+
+	// Handle window events
+	if (event.type == SDL_WINDOWEVENT && SDL_GetWindowFromID(event.window.windowID) == mon->amiga_window)
+	{
+		handle_window_event(event, mon);
+	}
+	else
+	{
+		// Handle other types of events
+		switch (event.type)
+		{
+		case SDL_QUIT:
+			handle_quit_event();
+			break;
+
+		case SDL_CLIPBOARDUPDATE:
+			handle_clipboard_update_event();
+			break;
+		
+		case SDL_JOYDEVICEADDED:
+			handle_joy_device_event(event.jdevice.which, false);
+			break;
+		case SDL_JOYDEVICEREMOVED:
+			handle_joy_device_event(event.jdevice.which, true);
+			break;
+
+		case SDL_CONTROLLERBUTTONDOWN:
+		case SDL_CONTROLLERBUTTONUP:
+			handle_controller_button_event(event);
+			break;
+
+		case SDL_JOYBUTTONDOWN:
+		case SDL_JOYBUTTONUP:
+			handle_joy_button_event(event);
+			break;
+
+		case SDL_CONTROLLERAXISMOTION:
+			handle_controller_axis_motion_event(event);
+			break;
+
+		case SDL_JOYAXISMOTION:
+			handle_joy_axis_motion_event(event);
+			break;
+
+		case SDL_JOYHATMOTION:
+			handle_joy_hat_motion_event(event);
+			break;
+
+		case SDL_KEYDOWN:
+		case SDL_KEYUP:
+			handle_key_event(event);
+			break;
+
+		case SDL_FINGERDOWN:
+		case SDL_FINGERUP:
+			handle_finger_event(event);
+			break;
+
+		case SDL_MOUSEBUTTONDOWN:
+		case SDL_MOUSEBUTTONUP:
+			handle_mouse_button_event(event, mon);
+			break;
+
+		case SDL_FINGERMOTION:
+			handle_finger_motion_event(event);
+			break;
+
+		case SDL_MOUSEMOTION:
+			handle_mouse_motion_event(event, mon);
+			break;
+
+		case SDL_MOUSEWHEEL:
+			handle_mouse_wheel_event(event);
+			break;
+
+		default:
+			break;
+		}
 	}
 }
 
@@ -1870,29 +1945,30 @@ void target_execute(const char* command)
 {
 	struct AmigaMonitor* mon = &AMonitors[0];
 	releasecapture(mon);
+	mouseactive = 0;
 
 	write_log("Target_execute received: %s\n", command);
-	const std::string cmd_string = command;
-	auto cmd_split = split_command(cmd_string);
+	const std::string command_string = command;
+	auto command_parts = split_command(command_string);
 
-	for (unsigned int i = 0; i < cmd_split.size(); ++i)
+	for (size_t i = 0; i < command_parts.size(); ++i)
 	{
 		if (i > 0)
 		{
-			const auto found = cmd_split[i].find(':');
-			if (found != std::string::npos)
+			const auto delimiter_position = command_parts[i].find(':');
+			if (delimiter_position != std::string::npos)
 			{
-				auto chunk = cmd_split[i].substr(0, found);
+				auto volume_or_device_name = command_parts[i].substr(0, delimiter_position);
 				for (auto mount = 0; mount < currprefs.mountitems; mount++)
 				{
 					if (currprefs.mountconfig[mount].ci.type == UAEDEV_DIR)
 					{
-						if (_tcsicmp(currprefs.mountconfig[mount].ci.volname, chunk.c_str()) == 0
-							|| _tcsicmp(currprefs.mountconfig[mount].ci.devname, chunk.c_str()) == 0)
+						if (_tcsicmp(currprefs.mountconfig[mount].ci.volname, volume_or_device_name.c_str()) == 0
+							|| _tcsicmp(currprefs.mountconfig[mount].ci.devname, volume_or_device_name.c_str()) == 0)
 						{
-							std::string tmp = currprefs.mountconfig[mount].ci.rootdir;
-							chunk += ':';
-							replace(cmd_split[i], chunk, tmp);
+							std::string root_directory = currprefs.mountconfig[mount].ci.rootdir;
+							volume_or_device_name += ':';
+							replace(command_parts[i], volume_or_device_name, root_directory);
 						}
 					}
 				}
@@ -1900,23 +1976,23 @@ void target_execute(const char* command)
 		}
 	}
 
-	std::string cmd_result;
-	for (const auto& i : cmd_split)
+	std::ostringstream command_stream;
+	for (const auto& part : command_parts)
 	{
-		cmd_result.append(i);
-		cmd_result.append(" ");
+		command_stream << part << " ";
 	}
 	// Ensure this runs in the background, otherwise we'll block the emulator until it returns
-	cmd_result.append(" &");
-	
+	command_stream << "&";
+
 	try
 	{
-		write_log("Executing: %s\n", cmd_result.c_str());
-		system(cmd_result.c_str());
+		std::string final_command = command_stream.str();
+		write_log("Executing: %s\n", final_command.c_str());
+		system(final_command.c_str());
 	}
-	catch (...)
+	catch (const std::exception& e)
 	{
-		write_log("Exception thrown when trying to execute: %s", command);
+		write_log("Exception thrown when trying to execute: %s. Exception: %s", command, e.what());
 	}
 }
 
@@ -2009,7 +2085,7 @@ void target_fixup_options(struct uae_prefs* p)
 		}
 	}
 	/* switch from 32 to 16 or vice versa if mode does not exist */
-	if (1 || isfullscreen() > 0) {
+	//if (1 || isfullscreen() > 0) {
 		int depth = p->color_mode == 5 ? 4 : 2;
 		for (int i = 0; md->DisplayModes[i].depth >= 0; i++) {
 			if (md->DisplayModes[i].depth == depth) {
@@ -2020,7 +2096,7 @@ void target_fixup_options(struct uae_prefs* p)
 		if (depth) {
 			p->color_mode = p->color_mode == 5 ? 2 : 5;
 		}
-	}
+	//}
 
 	if ((p->gfx_apmode[0].gfx_vsyncmode || p->gfx_apmode[1].gfx_vsyncmode)) {
 		if (p->produce_sound && sound_devices[p->soundcard]->type == SOUND_DEVICE_SDL2) {
@@ -2150,15 +2226,20 @@ void target_default_options(struct uae_prefs* p, int type)
 		p->gfx_apmode[0].gfx_fullscreen = GFX_WINDOW;
 		p->gfx_apmode[1].gfx_fullscreen = GFX_WINDOW;
 	}
-	
-	p->scaling_method = -1; //Default is Auto
+
+	//Default is Auto
+	p->scaling_method = -1; 
 	if (amiberry_options.default_scaling_method != -1)
 	{
-		// only valid values are -1 (Auto), 0 (Nearest) and 1 (Linear)
-		if (amiberry_options.default_scaling_method == 0 || amiberry_options.default_scaling_method == 1)
+		// only valid values are -1 (Auto), 0 (Nearest), 1 (Linear), 2 (Integer)
+		if (amiberry_options.default_scaling_method >= 0 && amiberry_options.default_scaling_method <= 2)
 			p->scaling_method = amiberry_options.default_scaling_method;
 	}
-	
+
+	if (amiberry_options.default_gfx_autoresolution)
+	{
+		p->gfx_autoresolution = amiberry_options.default_gfx_autoresolution;
+	}
 	if (amiberry_options.default_line_mode == 1)
 	{
 		// Double line mode
@@ -2186,6 +2267,8 @@ void target_default_options(struct uae_prefs* p, int type)
 
 	if (amiberry_options.default_frameskip)
 		p->gfx_framerate = 2;
+
+	p->soundcard_default = true;
 
 	if (amiberry_options.default_stereo_separation >= 0 && amiberry_options.default_stereo_separation <= 10)
 		p->sound_stereo_separation = amiberry_options.default_stereo_separation;
@@ -2221,6 +2304,10 @@ void target_default_options(struct uae_prefs* p, int type)
 	p->use_retroarch_menu = amiberry_options.default_retroarch_menu;
 	p->use_retroarch_reset = amiberry_options.default_retroarch_reset;
 	p->use_retroarch_vkbd = amiberry_options.default_retroarch_vkbd;
+
+	// Default IDs for ports 0 and 1: Mouse and first joystick
+	p->jports[0].id = JSEM_MICE;
+	p->jports[1].id = JSEM_JOYS;
 
 	whdload_prefs.button_wait = amiberry_options.default_whd_buttonwait;
 	whdload_prefs.show_splash = amiberry_options.default_whd_showsplash;
@@ -2278,6 +2365,29 @@ void target_default_options(struct uae_prefs* p, int type)
 	else
 	{
 		gui_theme.base_color = gcn::Color(170, 170, 170);
+	}
+
+	// Font color
+	if (amiberry_options.gui_theme_font_color[0])
+	{
+		// parse string as comma-separated numbers
+		const std::vector<int> result = parse_color_string(amiberry_options.gui_theme_font_color);
+		if (result.size() == 3)
+		{
+			gui_theme.font_color = gcn::Color(result[0], result[1], result[2]);
+		}
+		else if (result.size() == 4)
+		{
+			gui_theme.font_color = gcn::Color(result[0], result[1], result[2], result[3]);
+		}
+		else
+		{
+			gui_theme.font_color = gcn::Color(0, 0, 0);
+		}
+	}
+	else
+	{
+		gui_theme.font_color = gcn::Color(0, 0, 0);
 	}
 
 	// Selector Inactive
@@ -2347,6 +2457,52 @@ void target_default_options(struct uae_prefs* p, int type)
 	else
 	{
 		gui_theme.textbox_background = gcn::Color(220, 220, 220);
+	}
+
+	// Selection color (e.g. dropdowns)
+	if (amiberry_options.gui_theme_selection_color[0])
+	{
+		// parse string as comma-separated numbers
+		const std::vector<int> result = parse_color_string(amiberry_options.gui_theme_selection_color);
+		if (result.size() == 3)
+		{
+			gui_theme.selection_color = gcn::Color(result[0], result[1], result[2]);
+		}
+		else if (result.size() == 4)
+		{
+			gui_theme.selection_color = gcn::Color(result[0], result[1], result[2], result[3]);
+		}
+		else
+		{
+			gui_theme.selection_color = gcn::Color(195, 217, 217);
+		}
+	}
+	else
+	{
+		gui_theme.selection_color = gcn::Color(195, 217, 217);
+	}
+
+	// Foreground color
+	if (amiberry_options.gui_theme_foreground_color[0])
+	{
+		// parse string as comma-separated numbers
+		const std::vector<int> result = parse_color_string(amiberry_options.gui_theme_foreground_color);
+		if (result.size() == 3)
+		{
+			gui_theme.foreground_color = gcn::Color(result[0], result[1], result[2]);
+		}
+		else if (result.size() == 4)
+		{
+			gui_theme.foreground_color = gcn::Color(result[0], result[1], result[2], result[3]);
+		}
+		else
+		{
+			gui_theme.foreground_color = gcn::Color(0, 0, 0);
+		}
+	}
+	else
+	{
+		gui_theme.foreground_color = gcn::Color(0, 0, 0);
 	}
 }
 
@@ -2548,55 +2704,55 @@ static int target_parse_option_host(struct uae_prefs *p, const TCHAR *option, co
 		return 1;
 	}
 	if (cfgfile_yesno(option, value, _T("map_drives_auto"), &p->automount_removable)
-	    || cfgfile_yesno(option, value, _T("map_cd_drives"), &p->automount_cddrives)
-	    || cfgfile_yesno(option, value, _T("borderless"), &p->borderless)
-	    || cfgfile_yesno(option, value, _T("blank_monitors"), &p->blankmonitors)
-	    || cfgfile_yesno(option, value, _T("active_nocapture_pause"), &p->active_nocapture_pause)
-	    || cfgfile_yesno(option, value, _T("active_nocapture_nosound"), &p->active_nocapture_nosound)
-	    || cfgfile_yesno(option, value, _T("inactive_pause"), &p->inactive_pause)
-	    || cfgfile_yesno(option, value, _T("inactive_nosound"), &p->inactive_nosound)
-	    || cfgfile_intval(option, value, _T("inactive_input"), &p->inactive_input, 1)
-	    || cfgfile_yesno(option, value, _T("minimized_pause"), &p->minimized_pause)
-	    || cfgfile_yesno(option, value, _T("minimized_nosound"), &p->minimized_nosound)
-	    || cfgfile_intval(option, value, _T("minimized_input"), &p->minimized_input, 1)
-	    || cfgfile_string(option, value, _T("midi_device"), p->midioutdev, sizeof p->midioutdev)
-	    || cfgfile_string(option, value, _T("midiout_device_name"), p->midioutdev, sizeof p->midioutdev)
-	    || cfgfile_string(option, value, _T("midiin_device_name"), p->midiindev, sizeof p->midiindev)
-	    || cfgfile_yesno(option, value, _T("midirouter"), &p->midirouter)
-	    || cfgfile_yesno(option, value, _T("right_control_is_right_win"), &p->right_control_is_right_win_key)
-	    || cfgfile_yesno(option, value, _T("always_on_top"), &p->main_alwaysontop)
-	    || cfgfile_yesno(option, value, _T("gui_always_on_top"), &p->gui_alwaysontop)
-	    || cfgfile_intval(option, value, _T("drawbridge_driver"), &p->drawbridge_driver, 1)
+		|| cfgfile_yesno(option, value, _T("map_cd_drives"), &p->automount_cddrives)
+		|| cfgfile_yesno(option, value, _T("borderless"), &p->borderless)
+		|| cfgfile_yesno(option, value, _T("blank_monitors"), &p->blankmonitors)
+		|| cfgfile_yesno(option, value, _T("active_nocapture_pause"), &p->active_nocapture_pause)
+		|| cfgfile_yesno(option, value, _T("active_nocapture_nosound"), &p->active_nocapture_nosound)
+		|| cfgfile_yesno(option, value, _T("inactive_pause"), &p->inactive_pause)
+		|| cfgfile_yesno(option, value, _T("inactive_nosound"), &p->inactive_nosound)
+		|| cfgfile_intval(option, value, _T("inactive_input"), &p->inactive_input, 1)
+		|| cfgfile_yesno(option, value, _T("minimized_pause"), &p->minimized_pause)
+		|| cfgfile_yesno(option, value, _T("minimized_nosound"), &p->minimized_nosound)
+		|| cfgfile_intval(option, value, _T("minimized_input"), &p->minimized_input, 1)
+		|| cfgfile_string(option, value, _T("midi_device"), p->midioutdev, sizeof p->midioutdev)
+		|| cfgfile_string(option, value, _T("midiout_device_name"), p->midioutdev, sizeof p->midioutdev)
+		|| cfgfile_string(option, value, _T("midiin_device_name"), p->midiindev, sizeof p->midiindev)
+		|| cfgfile_yesno(option, value, _T("midirouter"), &p->midirouter)
+		|| cfgfile_yesno(option, value, _T("right_control_is_right_win"), &p->right_control_is_right_win_key)
+		|| cfgfile_yesno(option, value, _T("always_on_top"), &p->main_alwaysontop)
+		|| cfgfile_yesno(option, value, _T("gui_always_on_top"), &p->gui_alwaysontop)
+		|| cfgfile_intval(option, value, _T("drawbridge_driver"), &p->drawbridge_driver, 1)
 		|| cfgfile_yesno(option, value, _T("drawbridge_serial_autodetect"), &p->drawbridge_serial_auto)
 		|| cfgfile_string(option, value, _T("drawbridge_serial_port"), p->drawbridge_serial_port, sizeof p->drawbridge_serial_port)
-	    || cfgfile_yesno(option, value, _T("drawbridge_smartspeed"), &p->drawbridge_smartspeed)
-	    || cfgfile_yesno(option, value, _T("drawbridge_autocache"), &p->drawbridge_autocache)
-	    || cfgfile_yesno(option, value, _T("drawbridge_connected_drive_b"), &p->drawbridge_connected_drive_b)
-	    || cfgfile_yesno(option, value, _T("alt_tab_release"), &p->alt_tab_release)
-	    || cfgfile_yesno(option, value, _T("use_retroarch_quit"), &p->use_retroarch_quit)
-	    || cfgfile_yesno(option, value, _T("use_retroarch_menu"), &p->use_retroarch_menu)
-	    || cfgfile_yesno(option, value, _T("use_retroarch_reset"), &p->use_retroarch_reset)
-	    || cfgfile_yesno(option, value, _T("use_retroarch_vkbd"), &p->use_retroarch_vkbd)
-	    || cfgfile_intval(option, value, _T("sound_pullmode"), &p->sound_pullmode, 1)
-	    || cfgfile_intval(option, value, _T("samplersoundcard"), &p->samplersoundcard, 1)
-	    || cfgfile_intval(option, value, "kbd_led_num", &p->kbd_led_num, 1)
-	    || cfgfile_intval(option, value, "kbd_led_scr", &p->kbd_led_scr, 1)
-	    || cfgfile_intval(option, value, "kbd_led_cap", &p->kbd_led_cap, 1)
-	    || cfgfile_intval(option, value, "gfx_horizontal_offset", &p->gfx_horizontal_offset, 1)
-	    || cfgfile_intval(option, value, "gfx_vertical_offset", &p->gfx_vertical_offset, 1)
+		|| cfgfile_yesno(option, value, _T("drawbridge_smartspeed"), &p->drawbridge_smartspeed)
+		|| cfgfile_yesno(option, value, _T("drawbridge_autocache"), &p->drawbridge_autocache)
+		|| cfgfile_yesno(option, value, _T("drawbridge_connected_drive_b"), &p->drawbridge_connected_drive_b)
+		|| cfgfile_yesno(option, value, _T("alt_tab_release"), &p->alt_tab_release)
+		|| cfgfile_yesno(option, value, _T("use_retroarch_quit"), &p->use_retroarch_quit)
+		|| cfgfile_yesno(option, value, _T("use_retroarch_menu"), &p->use_retroarch_menu)
+		|| cfgfile_yesno(option, value, _T("use_retroarch_reset"), &p->use_retroarch_reset)
+		|| cfgfile_yesno(option, value, _T("use_retroarch_vkbd"), &p->use_retroarch_vkbd)
+		|| cfgfile_intval(option, value, _T("sound_pullmode"), &p->sound_pullmode, 1)
+		|| cfgfile_intval(option, value, _T("samplersoundcard"), &p->samplersoundcard, 1)
+		|| cfgfile_intval(option, value, "kbd_led_num", &p->kbd_led_num, 1)
+		|| cfgfile_intval(option, value, "kbd_led_scr", &p->kbd_led_scr, 1)
+		|| cfgfile_intval(option, value, "kbd_led_cap", &p->kbd_led_cap, 1)
+		|| cfgfile_intval(option, value, "gfx_horizontal_offset", &p->gfx_horizontal_offset, 1)
+		|| cfgfile_intval(option, value, "gfx_vertical_offset", &p->gfx_vertical_offset, 1)
 		|| cfgfile_intval(option, value, "gfx_manual_crop_width", &p->gfx_manual_crop_width, 1)
 		|| cfgfile_intval(option, value, "gfx_manual_crop_height", &p->gfx_manual_crop_height, 1)
-	    || cfgfile_yesno(option, value, _T("gfx_auto_height"), &p->gfx_auto_crop)
-	    || cfgfile_yesno(option, value, _T("gfx_auto_crop"), &p->gfx_auto_crop)
+		|| cfgfile_yesno(option, value, _T("gfx_auto_height"), &p->gfx_auto_crop)
+		|| cfgfile_yesno(option, value, _T("gfx_auto_crop"), &p->gfx_auto_crop)
 		|| cfgfile_yesno(option, value, _T("gfx_manual_crop"), &p->gfx_manual_crop)
-	    || cfgfile_intval(option, value, "gfx_correct_aspect", &p->gfx_correct_aspect, 1)
-	    || cfgfile_intval(option, value, "scaling_method", &p->scaling_method, 1)
-	    || cfgfile_string(option, value, "open_gui", p->open_gui, sizeof p->open_gui)
-	    || cfgfile_string(option, value, "quit_amiberry", p->quit_amiberry, sizeof p->quit_amiberry)
-	    || cfgfile_string(option, value, "action_replay", p->action_replay, sizeof p->action_replay)
-	    || cfgfile_string(option, value, "fullscreen_toggle", p->fullscreen_toggle, sizeof p->fullscreen_toggle)
-	    || cfgfile_string(option, value, "minimize", p->minimize, sizeof p->minimize)
-	    || cfgfile_intval(option, value, _T("cpu_idle"), &p->cpu_idle, 1))
+		|| cfgfile_intval(option, value, "gfx_correct_aspect", &p->gfx_correct_aspect, 1)
+		|| cfgfile_intval(option, value, "scaling_method", &p->scaling_method, 1)
+		|| cfgfile_string(option, value, "open_gui", p->open_gui, sizeof p->open_gui)
+		|| cfgfile_string(option, value, "quit_amiberry", p->quit_amiberry, sizeof p->quit_amiberry)
+		|| cfgfile_string(option, value, "action_replay", p->action_replay, sizeof p->action_replay)
+		|| cfgfile_string(option, value, "fullscreen_toggle", p->fullscreen_toggle, sizeof p->fullscreen_toggle)
+		|| cfgfile_string(option, value, "minimize", p->minimize, sizeof p->minimize)
+		|| cfgfile_intval(option, value, _T("cpu_idle"), &p->cpu_idle, 1))
 		return 1;
 
 	if (cfgfile_yesno(option, value, _T("vkbd_enabled"), &p->vkbd_enabled)
@@ -2805,6 +2961,11 @@ void get_saveimage_path(char* out, int size, int dir)
 	_tcsncpy(out, fix_trailing(saveimage_dir).c_str(), size - 1);
 }
 
+std::string get_configuration_path()
+{
+	return fix_trailing(config_path);
+}
+
 void get_configuration_path(char* out, int size)
 {
 	_tcsncpy(out, fix_trailing(config_path).c_str(), size - 1);
@@ -2818,6 +2979,11 @@ void set_configuration_path(const std::string& newpath)
 void set_nvram_path(const std::string& newpath)
 {
 	nvram_dir = newpath;
+}
+
+void set_plugins_path(const std::string& newpath)
+{
+	plugins_dir = newpath;
 }
 
 void set_video_path(const std::string& newpath)
@@ -2865,25 +3031,22 @@ void set_logfile_enabled(bool enabled)
 	amiberry_options.write_logfile = enabled;
 }
 
-// Returns 1 if savedatapath is overridden
 // if force_internal == true, the non-overridden whdbootpath based save-data path will be returned
-int get_savedatapath(char* out, int size, const int force_internal)
+std::string get_savedatapath(const bool force_internal)
 {
-	int ret = 0;
+	std::string result;
+	bool isOverridden = false;
 
-	if (const char* ep = force_internal ? NULL : getenv("WHDBOOT_SAVE_DATA"); ep != NULL) {
-		_tcsncpy(out, ep, static_cast<size_t>(size) - 1);
-		ret = 1;
+	if (!force_internal && std::getenv("WHDBOOT_SAVE_DATA")) {
+		result = std::getenv("WHDBOOT_SAVE_DATA");
+		isOverridden = true;
 	}
 	else {
-		const std::string tmp = get_whdbootpath();
-		_tcsncpy(out, tmp.c_str(), static_cast<size_t>(size) - 1);
-		strncat(out, "save-data", static_cast<size_t>(size) - 1);
+		result = get_whdbootpath();
+		result.append("save-data");
 	}
-
-	write_log("%s savedatapath [%s]\n", ret ? "external" : "internal", out);
-
-	return ret;
+	write_log("%s savedatapath [%s]\n", isOverridden ? "external" : "internal", result.c_str());
+	return result;
 }
 
 std::string get_whdbootpath()
@@ -2906,6 +3069,36 @@ void set_whdload_arch_path(const std::string& newpath)
 	whdload_arch_path = newpath;
 }
 
+std::string get_floppy_path()
+{
+	return fix_trailing(floppy_path);
+}
+
+void set_floppy_path(const std::string& newpath)
+{
+	floppy_path = newpath;
+}
+
+std::string get_harddrive_path()
+{
+	return fix_trailing(harddrive_path);
+}
+
+void set_harddrive_path(const std::string& newpath)
+{
+	harddrive_path = newpath;
+}
+
+std::string get_cdrom_path()
+{
+	return fix_trailing(cdrom_path);
+}
+
+void set_cdrom_path(const std::string& newpath)
+{
+	cdrom_path = newpath;
+}
+
 std::string get_logfile_path()
 {
 	return logfile_path;
@@ -2914,6 +3107,11 @@ std::string get_logfile_path()
 void set_logfile_path(const std::string& newpath)
 {
 	logfile_path = newpath;
+}
+
+std::string get_rom_path()
+{
+	return fix_trailing(rom_path);
 }
 
 void get_rom_path(char* out, int size)
@@ -2951,6 +3149,11 @@ void get_nvram_path(TCHAR* out, int size)
 	_tcsncpy(out, fix_trailing(nvram_dir).c_str(), size - 1);
 }
 
+std::string get_plugins_path()
+{
+	return fix_trailing(plugins_dir);
+}
+
 std::string get_screenshot_path()
 {
 	return fix_trailing(screenshot_dir);
@@ -2968,39 +3171,47 @@ void get_floppy_sounds_path(char* out, int size)
 
 int target_cfgfile_load(struct uae_prefs* p, const char* filename, int type, int isdefault)
 {
+	int type2;
 	auto result = 0;
 
-	write_log(_T("target_cfgfile_load(): load file %s\n"), filename);
+	if (type < 0)
+		type = 0;
 
-	discard_prefs(p, type);
-	default_prefs(p, true, 0);
+	if (type == 0 || type == 1) {
+		discard_prefs(p, 0);
+	}
+	type2 = type;
+	if (type == 0 || type == 3) {
+		default_prefs(p, true, type);
+		write_log(_T("config reset\n"));
+	}
 
 	const char* ptr = strstr(const_cast<char*>(filename), ".uae");
 	if (ptr)
 	{
-		auto config_type = CONFIG_TYPE_HARDWARE | CONFIG_TYPE_HOST;
-		result = cfgfile_load(p, filename, &config_type, 0, 1);
+		write_log(_T("target_cfgfile_load: loading file %s\n"), filename);
+		result = cfgfile_load(p, filename, &type2, 0, isdefault ? 0 : 1);
 	}
+	if (!result)
+	{
+		write_log(_T("target_cfgfile_load: loading file %s failed\n"), filename);
+		return result;
+	}
+	if (type > 0)
+		return result;
 	if (result)
 		extract_filename(filename, last_loaded_config);
 
-	if (result)
+	for (auto i = 0; i < p->nr_floppies; ++i)
 	{
-		for (auto i = 0; i < p->nr_floppies; ++i)
-		{
-			if (!DISK_validate_filename(p, p->floppyslots[i].df, i, nullptr, 0, nullptr, nullptr, nullptr))
-				p->floppyslots[i].df[0] = 0;
-			disk_insert(i, p->floppyslots[i].df);
-			if (strlen(p->floppyslots[i].df) > 0)
-				add_file_to_mru_list(lstMRUDiskList, std::string(p->floppyslots[i].df));
-		}
-
-		if (!isdefault)
-			inputdevice_updateconfig(nullptr, p);
-
-		SetLastActiveConfig(filename);
+		if (!DISK_validate_filename(p, p->floppyslots[i].df, i, nullptr, 0, nullptr, nullptr, nullptr))
+			p->floppyslots[i].df[0] = 0;
+		disk_insert(i, p->floppyslots[i].df);
+		if (strlen(p->floppyslots[i].df) > 0)
+			add_file_to_mru_list(lstMRUDiskList, std::string(p->floppyslots[i].df));
 	}
 
+	SetLastActiveConfig(filename);
 	return result;
 }
 
@@ -3148,8 +3359,13 @@ void save_amiberry_settings(void)
 		fputs(buffer, f);
 		};
 
-	// Use the old Single-Window mode (useful in cases where multiple overlapping windows are a problem)
-	write_bool_option("single_window_mode", amiberry_options.single_window_mode);
+	auto write_float_option = [&](const char* name, float value) {
+		snprintf(buffer, MAX_DPATH, "%s=%f\n", name, value);
+		fputs(buffer, f);
+		};
+
+	// Set the window scaling option (the default is 1.0)
+	write_float_option("window_scaling", amiberry_options.window_scaling);
 
 	// Should the Quickstart Panel be the default when opening the GUI?
 	write_int_option("Quickstart", amiberry_options.quickstart_start);
@@ -3209,6 +3425,9 @@ void save_amiberry_settings(void)
 	// Scaling method to use by default?
 	// Valid options are: -1 Auto, 0 Nearest Neighbor, 1 Linear
 	write_int_option("default_scaling_method", amiberry_options.default_scaling_method);
+
+	// Enable Auto Resolution Switching by default?
+	write_int_option("default_gfx_autoresolution", amiberry_options.default_gfx_autoresolution);
 
 	// Enable frameskip by default?
 	write_bool_option("default_frameskip", amiberry_options.default_frameskip);
@@ -3321,6 +3540,9 @@ void save_amiberry_settings(void)
 	// GUI Theme: Font size
 	write_int_option("gui_theme_font_size", amiberry_options.gui_theme_font_size);
 
+	// GUI Theme: Font color
+	write_string_option("gui_theme_font_color", amiberry_options.gui_theme_font_color);
+
 	// GUI Theme: Base color
 	write_string_option("gui_theme_base_color", amiberry_options.gui_theme_base_color);
 
@@ -3329,6 +3551,12 @@ void save_amiberry_settings(void)
 
 	// GUI Theme: Selector Active color
 	write_string_option("gui_theme_selector_active", amiberry_options.gui_theme_selector_active);
+
+	// GUI Theme: Selection color
+	write_string_option("gui_theme_selection_color", amiberry_options.gui_theme_selection_color);
+
+	// GUI Theme: Foreground color
+	write_string_option("gui_theme_foreground_color", amiberry_options.gui_theme_foreground_color);
 
 	// GUI Theme: Textbox Background color
 	write_string_option("gui_theme_textbox_background", amiberry_options.gui_theme_textbox_background);
@@ -3340,6 +3568,9 @@ void save_amiberry_settings(void)
 	write_string_option("retroarch_config", retroarch_file);
 	write_string_option("whdboot_path", whdboot_path);
 	write_string_option("whdload_arch_path", whdload_arch_path);
+	write_string_option("floppy_path", floppy_path);
+	write_string_option("harddrive_path", harddrive_path);
+	write_string_option("cdrom_path", cdrom_path);
 	write_string_option("logfile_path", logfile_path);
 	write_string_option("rom_path", rom_path);
 	write_string_option("rp9_path", rp9_path);
@@ -3351,6 +3582,7 @@ void save_amiberry_settings(void)
 	write_string_option("ripper_path", ripper_path);
 	write_string_option("inputrecordings_dir", input_dir);
 	write_string_option("nvram_dir", nvram_dir);
+	write_string_option("plugins_dir", plugins_dir);
 	write_string_option("video_dir", video_dir);
 
 	// The number of ROMs in the last scan
@@ -3432,8 +3664,8 @@ static int parse_amiberry_settings_line(const char *path, char *linea)
 		if (strlen(romName) > 0 && strlen(romPath) > 0 && romType != -1)
 		{
 			auto* tmp = new AvailableROM();
-			strncpy(tmp->Name, romName, sizeof tmp->Name - 1);
-			strncpy(tmp->Path, romPath, sizeof tmp->Path - 1);
+			tmp->Name.assign(romName);
+			tmp->Path.assign(romPath);
 			tmp->ROMType = romType;
 			lstAvailableROMs.emplace_back(tmp);
 			strncpy(romName, "", sizeof romName);
@@ -3480,6 +3712,9 @@ static int parse_amiberry_settings_line(const char *path, char *linea)
 		ret |= cfgfile_string(option, value, "retroarch_config", retroarch_file);
 		ret |= cfgfile_string(option, value, "whdboot_path", whdboot_path);
 		ret |= cfgfile_string(option, value, "whdload_arch_path", whdload_arch_path);
+		ret |= cfgfile_string(option, value, "floppy_path", floppy_path);
+		ret |= cfgfile_string(option, value, "harddrive_path", harddrive_path);
+		ret |= cfgfile_string(option, value, "cdrom_path", cdrom_path);
 		ret |= cfgfile_string(option, value, "logfile_path", logfile_path);
 		ret |= cfgfile_string(option, value, "rom_path", rom_path);
 		ret |= cfgfile_string(option, value, "rp9_path", rp9_path);
@@ -3491,6 +3726,7 @@ static int parse_amiberry_settings_line(const char *path, char *linea)
 		ret |= cfgfile_string(option, value, "inputrecordings_dir", input_dir);
 		ret |= cfgfile_string(option, value, "screenshot_dir", screenshot_dir);
 		ret |= cfgfile_string(option, value, "nvram_dir", nvram_dir);
+		ret |= cfgfile_string(option, value, "plugins_dir", plugins_dir);
 		ret |= cfgfile_string(option, value, "video_dir", video_dir);
 		// NOTE: amiberry_config is a "read only", i.e. it's not written in
 		// save_amiberry_settings(). It's purpose is to provide -o amiberry_config=path
@@ -3499,7 +3735,7 @@ static int parse_amiberry_settings_line(const char *path, char *linea)
 		ret |= cfgfile_intval(option, value, "ROMs", &numROMs, 1);
 		ret |= cfgfile_intval(option, value, "MRUDiskList", &numDisks, 1);
 		ret |= cfgfile_intval(option, value, "MRUCDList", &numCDs, 1);
-		ret |= cfgfile_yesno(option, value, "single_window_mode", &amiberry_options.single_window_mode);
+		ret |= cfgfile_floatval(option, value, "window_scaling", &amiberry_options.window_scaling);
 		ret |= cfgfile_yesno(option, value, "Quickstart", &amiberry_options.quickstart_start);
 		ret |= cfgfile_yesno(option, value, "read_config_descriptions", &amiberry_options.read_config_descriptions);
 		ret |= cfgfile_yesno(option, value, "write_logfile", &amiberry_options.write_logfile);
@@ -3517,6 +3753,7 @@ static int parse_amiberry_settings_line(const char *path, char *linea)
 		ret |= cfgfile_yesno(option, value, "default_horizontal_centering", &amiberry_options.default_horizontal_centering);
 		ret |= cfgfile_yesno(option, value, "default_vertical_centering", &amiberry_options.default_vertical_centering);
 		ret |= cfgfile_intval(option, value, "default_scaling_method", &amiberry_options.default_scaling_method, 1);
+		ret |= cfgfile_intval(option, value, "default_gfx_autoresolution", &amiberry_options.default_gfx_autoresolution, 1);
 		ret |= cfgfile_yesno(option, value, "default_frameskip", &amiberry_options.default_frameskip);
 		ret |= cfgfile_yesno(option, value, "default_correct_aspect_ratio", &amiberry_options.default_correct_aspect_ratio);
 		ret |= cfgfile_yesno(option, value, "default_auto_height", &amiberry_options.default_auto_crop);
@@ -3555,9 +3792,12 @@ static int parse_amiberry_settings_line(const char *path, char *linea)
 		ret |= cfgfile_string(option, value, "default_vkbd_toggle", amiberry_options.default_vkbd_toggle, sizeof amiberry_options.default_vkbd_toggle);
 		ret |= cfgfile_string(option, value, "gui_theme_font_name", amiberry_options.gui_theme_font_name, sizeof amiberry_options.gui_theme_font_name);
 		ret |= cfgfile_intval(option, value, "gui_theme_font_size", &amiberry_options.gui_theme_font_size, 1);
+		ret |= cfgfile_string(option, value, "gui_theme_font_color", amiberry_options.gui_theme_font_color, sizeof amiberry_options.gui_theme_font_color);
 		ret |= cfgfile_string(option, value, "gui_theme_base_color", amiberry_options.gui_theme_base_color, sizeof amiberry_options.gui_theme_base_color);
 		ret |= cfgfile_string(option, value, "gui_theme_selector_inactive", amiberry_options.gui_theme_selector_inactive, sizeof amiberry_options.gui_theme_selector_inactive);
 		ret |= cfgfile_string(option, value, "gui_theme_selector_active", amiberry_options.gui_theme_selector_active, sizeof amiberry_options.gui_theme_selector_active);
+		ret |= cfgfile_string(option, value, "gui_theme_selection_color", amiberry_options.gui_theme_selection_color, sizeof amiberry_options.gui_theme_selection_color);
+		ret |= cfgfile_string(option, value, "gui_theme_foreground_color", amiberry_options.gui_theme_foreground_color, sizeof amiberry_options.gui_theme_foreground_color);
 		ret |= cfgfile_string(option, value, "gui_theme_textbox_background", amiberry_options.gui_theme_textbox_background, sizeof amiberry_options.gui_theme_textbox_background);
 	}
 	return ret;
@@ -3670,14 +3910,6 @@ void init_macos_amiberry_folders(const std::string& macos_amiberry_directory)
 	if (!my_existsdir(directory.c_str()))
 		my_mkdir(directory.c_str());
 
-	directory = macos_amiberry_directory + "/Data";
-	if (!my_existsdir(directory.c_str()))
-		my_mkdir(directory.c_str());
-
-	directory = macos_amiberry_directory + "/Data/floppy_sounds";
-	if (!my_existsdir(directory.c_str()))
-		my_mkdir(directory.c_str());
-
 	directory = macos_amiberry_directory + "/Savestates";
 	if (!my_existsdir(directory.c_str()))
 		my_mkdir(directory.c_str());
@@ -3691,6 +3923,16 @@ void init_macos_amiberry_folders(const std::string& macos_amiberry_directory)
 		my_mkdir(directory.c_str());
 
 	directory = macos_amiberry_directory + "/Nvram";
+	if (!my_existsdir(directory.c_str()))
+		my_mkdir(directory.c_str());
+}
+
+void init_macos_library_folders(const std::string& macos_amiberry_directory)
+{
+	if (!my_existsdir(macos_amiberry_directory.c_str()))
+		my_mkdir(macos_amiberry_directory.c_str());
+
+	std::string directory = macos_amiberry_directory + "/floppy_sounds";
 	if (!my_existsdir(directory.c_str()))
 		my_mkdir(directory.c_str());
 }
@@ -3725,24 +3967,36 @@ static void init_amiberry_paths(void)
 {
 	current_dir = start_path_data;
 #ifdef __MACH__
-	// MacOS stores these files under the user Documents/Amiberry folder
+	// On MacOS, we these files under the user Documents/Amiberry folder by default
+	// If the folder is missing, we create it and copy the files from the app bundle
+	// The exception is the Data folder and amiberry.conf, which live in the user Library/Application Support/Amiberry folder
 	const std::string macos_home_directory = getenv("HOME");
+	const std::string macos_library_directory = macos_home_directory + "/Library/Application Support/Amiberry";
 	const std::string macos_amiberry_directory = macos_home_directory + "/Documents/Amiberry";
-	if (!my_existsdir(macos_amiberry_directory.c_str()))
+
+	if (!my_existsdir(macos_amiberry_directory.c_str()) || !my_existsdir(macos_library_directory.c_str()))
 	{
-		// Amiberry home dir is missing, generate it and all directories under it
+		//If  Amiberry library dir is missing, generate it
+		init_macos_library_folders(macos_library_directory);
+
+		// If Amiberry home dir is missing, generate it and all directories under it
 		init_macos_amiberry_folders(macos_amiberry_directory);
 		macos_copy_amiberry_files_to_userdir(macos_amiberry_directory);
 	}
-	config_path = controllers_path = data_dir = whdboot_path = whdload_arch_path =
+
+	config_path = controllers_path = whdboot_path = whdload_arch_path = floppy_path = harddrive_path = cdrom_path =
 		logfile_path = rom_path = rp9_path = saveimage_dir = savestate_dir = ripper_path =
-		input_dir = screenshot_dir = nvram_dir = video_dir = macos_amiberry_directory;
+		input_dir = screenshot_dir = nvram_dir = plugins_dir = video_dir = macos_amiberry_directory;
 
 	config_path.append("/Configurations/");
 	controllers_path.append("/Controllers/");
-	data_dir.append("/Data/");
+	data_dir = macos_library_directory;
+	data_dir.append("/");
 	whdboot_path.append("/Whdboot/");
 	whdload_arch_path.append("/Lha/");
+	floppy_path.append("/Floppies/");
+	harddrive_path.append("/Harddrives/");
+	cdrom_path.append("/CDROMs/");
 	logfile_path.append("/Amiberry.log");
 	rom_path.append("/Kickstarts/");
 	rp9_path.append("/RP9/");
@@ -3752,11 +4006,15 @@ static void init_amiberry_paths(void)
 	input_dir.append("/Inputrecordings/");
 	screenshot_dir.append("/Screenshots/");
 	nvram_dir.append("/Nvram/");
+	plugins_dir.append("/Plugins/");
 	video_dir.append("/Videos/");
+
+	amiberry_conf_file = data_dir;
+	amiberry_conf_file.append("amiberry.conf");
 #else
-	config_path = controllers_path = data_dir = whdboot_path = whdload_arch_path = 
+	config_path = controllers_path = data_dir = whdboot_path = whdload_arch_path = floppy_path = harddrive_path = cdrom_path =
 		logfile_path = rom_path = rp9_path = saveimage_dir = savestate_dir = ripper_path =
-		input_dir = screenshot_dir = nvram_dir = video_dir = 
+		input_dir = screenshot_dir = nvram_dir = plugins_dir = video_dir = 
 		start_path_data;
 
 	config_path.append("/conf/");
@@ -3764,6 +4022,9 @@ static void init_amiberry_paths(void)
 	data_dir.append("/data/");
 	whdboot_path.append("/whdboot/");
 	whdload_arch_path.append("/lha/");
+	floppy_path.append("/floppies/");
+	harddrive_path.append("/harddrives/");
+	cdrom_path.append("/cdroms/");
 	logfile_path.append("/amiberry.log");
 	rom_path.append("/kickstarts/");
 	rp9_path.append("/rp9/");
@@ -3773,10 +4034,12 @@ static void init_amiberry_paths(void)
 	input_dir.append("/inputrecordings/");
 	screenshot_dir.append("/screenshots/");
 	nvram_dir.append("/nvram/");
+	plugins_dir.append("/plugins/");
 	video_dir.append("/videos/");
-#endif
+
 	amiberry_conf_file = config_path;
 	amiberry_conf_file.append("amiberry.conf");
+#endif
 
 	retroarch_file = config_path;
 	retroarch_file.append("retroarch.cfg");
@@ -3811,6 +4074,7 @@ void target_getdate(int* y, int* m, int* d)
 
 void target_addtorecent(const TCHAR* name, int t)
 {
+	add_file_to_mru_list(lstMRUDiskList, std::string(name));
 }
 
 void target_reset()
@@ -3864,7 +4128,7 @@ void* uaenative_get_uaevar(void)
 	uaevar.amigawnd = mon->hAmigaWnd;
 #endif
 	// WARNING: not 64-bit safe!
-    uaevar.z3offset = (uae_u32)(uae_u64)get_real_address(z3fastmem_bank[0].start) - z3fastmem_bank[0].start;
+	uaevar.z3offset = (uae_u32)(uae_u64)get_real_address(z3fastmem_bank[0].start) - z3fastmem_bank[0].start;
 	return &uaevar;
 }
 
@@ -3877,8 +4141,7 @@ const TCHAR** uaenative_get_library_dirs(void)
 		nats = xcalloc(const TCHAR*, 3);
 	if (path == NULL) {
 		path = xcalloc(TCHAR, MAX_DPATH);
-		_tcscpy(path, start_path_data.c_str());
-		_tcscat(path, _T("plugins"));
+		_tcscpy(path, plugins_dir.c_str());
 	}
 	nats[0] = start_path_data.c_str();
 	nats[1] = path;
@@ -3895,10 +4158,10 @@ bool data_dir_exists(const char* directory)
 
 int main(int argc, char* argv[])
 {
-    for (auto i = 1; i < argc; i++) {
-        if (_tcscmp(argv[i], _T("-h")) == 0 || _tcscmp(argv[i], _T("--help")) == 0)
-            usage();
-    }
+	for (auto i = 1; i < argc; i++) {
+		if (_tcscmp(argv[i], _T("-h")) == 0 || _tcscmp(argv[i], _T("--help")) == 0)
+			usage();
+	}
 
 	struct sigaction action{};
 	mainthreadid = uae_thread_get_id(nullptr);
@@ -3920,8 +4183,8 @@ int main(int argc, char* argv[])
 	max_uae_height = 8192;
 
 	// Get startup path
-    const auto external_files_dir = getenv("EXTERNAL_FILES_DIR");
-    const auto xdg_data_home = getenv("XDG_DATA_HOME");
+	const auto external_files_dir = getenv("EXTERNAL_FILES_DIR");
+	const auto xdg_data_home = getenv("XDG_DATA_HOME");
 	if (external_files_dir != nullptr && data_dir_exists(external_files_dir))
 	{
 		start_path_data = std::string(external_files_dir);
@@ -3991,7 +4254,9 @@ int main(int argc, char* argv[])
 		abort();
 	}
 #endif
-	RescanROMs();
+	if (lstAvailableROMs.empty())
+		RescanROMs();
+
 	uae_time_calibrate();
 	
 	if (SDL_Init(SDL_INIT_EVERYTHING) != 0)
@@ -4102,11 +4367,9 @@ int main(int argc, char* argv[])
 	romlist_clear();
 	free_keyring();
 
-	lstMRUDiskList.clear();
-	lstMRUCDList.clear();
-	lstMRUWhdloadList.clear();
-
 	logging_cleanup();
+
+	SDL_Quit();
 
 	if (host_poweroff)
 		target_shutdown();
@@ -4145,24 +4408,26 @@ void drawbridge_update_profiles(uae_prefs* p)
 #ifdef FLOPPYBRIDGE
 	const unsigned int flags = (p->drawbridge_autocache ? 1 : 0) | (p->drawbridge_connected_drive_b & 1) << 1 | (p->drawbridge_serial_auto ? 4 : 0) | (p->drawbridge_smartspeed ? 8 : 0);
 
-	const std::string profile_name_fast = "Fast";
+	const std::string profile_name_normal = "Normal";
 	const std::string profile_name_comp = "Compatible";
 	const std::string profile_name_turbo = "Turbo";
 	const std::string profile_name_stalling = "Stalling";
 
-	const std::string bridge_mode_fast = "0";
+	const std::string bridge_mode_normal = "0";
 	const std::string bridge_mode_comp = "1";
 	const std::string bridge_mode_turbo = "2";
 	const std::string bridge_mode_stalling = "3";
+
 	const std::string bridge_density_auto = "0";
 
 	std::string serial_port = p->drawbridge_serial_port;
 	if (serial_port.empty())
-		serial_port = "COM0";
+		serial_port = "/dev/ttyUSB0";
 
+	// profileID | profileName [ drawbridge_driver | flags | serial_port | bridge_mode | bridge_density ]
 	std::string tmp;
-	// Fast
-	tmp = std::string("1") + "|" + profile_name_fast + "[" + std::to_string(p->drawbridge_driver) + "|" + std::to_string(flags) + "|" + serial_port + "|" + bridge_mode_fast + "|" + bridge_density_auto + "]";
+	// Normal
+	tmp = std::string("1") + "|" + profile_name_normal + "[" + std::to_string(p->drawbridge_driver) + "|" + std::to_string(flags) + "|" + serial_port + "|" + bridge_mode_normal + "|" + bridge_density_auto + "]";
 	// Compatible
 	tmp += std::string("2") + "|" + profile_name_comp + "[" + std::to_string(p->drawbridge_driver) + "|" + std::to_string(flags) + "|" + serial_port + "|" + bridge_mode_comp + "|" + bridge_density_auto + "]";
 	// Turbo
@@ -4205,4 +4470,149 @@ void clear_whdload_prefs()
 	whdload_prefs.slaves = {};
 	whdload_prefs.selected_slave = {};
 	whdload_prefs.custom.clear();
+}
+
+#include <fstream>
+#include <iostream>
+#include <sstream>
+
+void save_controller_mapping_to_file(const controller_mapping& input, const std::string& filename)
+{
+	std::ofstream out_file(filename);
+	if (!out_file) {
+		std::cerr << "Unable to open file " << filename << std::endl;
+		return;
+	}
+
+	out_file << "button=";
+	for (const auto& b : input.button) {
+		out_file << b << " ";
+	}
+	out_file << "\naxis=";
+	for (const auto& a : input.axis) {
+		out_file << a << " ";
+	}
+	out_file << "\nlstick_axis_y_invert=" << input.lstick_axis_y_invert;
+	out_file << "\nlstick_axis_x_invert=" << input.lstick_axis_x_invert;
+	out_file << "\nrstick_axis_y_invert=" << input.rstick_axis_y_invert;
+	out_file << "\nrstick_axis_x_invert=" << input.rstick_axis_x_invert;
+	out_file << "\nhotkey_button=" << input.hotkey_button;
+	out_file << "\nquit_button=" << input.quit_button;
+	out_file << "\nreset_button=" << input.reset_button;
+	out_file << "\nmenu_button=" << input.menu_button;
+	out_file << "\nload_state_button=" << input.load_state_button;
+	out_file << "\nsave_state_button=" << input.save_state_button;
+	out_file << "\nvkbd_button=" << input.vkbd_button;
+	out_file << "\nnumber_of_hats=" << input.number_of_hats;
+	out_file << "\nnumber_of_axis=" << input.number_of_axis;
+	out_file << "\nis_retroarch=" << input.is_retroarch;
+	out_file << "\namiberry_custom_none=";
+	for (const auto& b : input.amiberry_custom_none) {
+		out_file << b << " ";
+	}
+	out_file << "\namiberry_custom_hotkey=";
+	for (const auto& b : input.amiberry_custom_hotkey) {
+		out_file << b << " ";
+	}
+	out_file << "\namiberry_custom_axis_none=";
+	for (const auto& a : input.amiberry_custom_axis_none) {
+		out_file << a << " ";
+	}
+	out_file << "\namiberry_custom_axis_hotkey=";
+	for (const auto& a : input.amiberry_custom_axis_hotkey) {
+		out_file << a << " ";
+	}
+
+	out_file.close();
+}
+
+void read_controller_mapping_from_file(controller_mapping& input, const std::string& filename)
+{
+	std::ifstream in_file(filename);
+	if (!in_file) {
+		std::cerr << "Unable to open file " << filename << std::endl;
+		return;
+	}
+
+	std::string line;
+	while (std::getline(in_file, line)) {
+		std::istringstream iss(line);
+		std::string key;
+		if (std::getline(iss, key, '=')) {
+			if (key == "button") {
+				for (auto& b : input.button) {
+					iss >> b;
+				}
+			}
+			else if (key == "axis") {
+				for (auto& a : input.axis) {
+					iss >> a;
+				}
+			}
+			else if (key == "lstick_axis_y_invert") {
+				iss >> input.lstick_axis_y_invert;
+			}
+			else if (key == "lstick_axis_x_invert") {
+				iss >> input.lstick_axis_x_invert;
+			}
+			else if (key == "rstick_axis_y_invert") {
+				iss >> input.rstick_axis_y_invert;
+			}
+			else if (key == "rstick_axis_x_invert") {
+				iss >> input.rstick_axis_x_invert;
+			}
+			else if (key == "hotkey_button") {
+				iss >> input.hotkey_button;
+			}
+			else if (key == "quit_button") {
+				iss >> input.quit_button;
+			}
+			else if (key == "reset_button") {
+				iss >> input.reset_button;
+			}
+			else if (key == "menu_button") {
+				iss >> input.menu_button;
+			}
+			else if (key == "load_state_button") {
+				iss >> input.load_state_button;
+			}
+			else if (key == "save_state_button") {
+				iss >> input.save_state_button;
+			}
+			else if (key == "vkbd_button") {
+				iss >> input.vkbd_button;
+			}
+			else if (key == "number_of_hats") {
+				iss >> input.number_of_hats;
+			}
+			else if (key == "number_of_axis") {
+				iss >> input.number_of_axis;
+			}
+			else if (key == "is_retroarch") {
+				iss >> input.is_retroarch;
+			}
+			else if (key == "amiberry_custom_none") {
+				for (auto& b : input.amiberry_custom_none) {
+					iss >> b;
+				}
+			}
+			else if (key == "amiberry_custom_hotkey") {
+				for (auto& b : input.amiberry_custom_hotkey) {
+					iss >> b;
+				}
+			}
+			else if (key == "amiberry_custom_axis_none") {
+				for (auto& a : input.amiberry_custom_axis_none) {
+					iss >> a;
+				}
+			}
+			else if (key == "amiberry_custom_axis_hotkey") {
+				for (auto& a : input.amiberry_custom_axis_hotkey) {
+					iss >> a;
+				}
+			}
+		}
+	}
+
+	in_file.close();
 }

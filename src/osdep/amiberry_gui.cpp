@@ -46,10 +46,6 @@ int emulating = 0;
 bool config_loaded = false;
 int gui_active;
 
-//struct serparportinfo *comports[MAX_SERPAR_PORTS];
-//struct midiportinfo *midiinportinfo[MAX_MIDI_PORTS];
-//struct midiportinfo *midioutportinfo[MAX_MIDI_PORTS];
-
 std::vector<std::string> serial_ports;
 std::vector<std::string> midi_in_ports;
 std::vector<std::string> midi_out_ports;
@@ -123,9 +119,9 @@ static void addrom(struct romdata* rd, const char* path)
 	char tmpName[MAX_DPATH];
 	auto* const tmp = new AvailableROM();
 	getromname(rd, tmpName);
-	strncpy(tmp->Name, tmpName, MAX_DPATH - 1);
+	tmp->Name.assign(tmpName);
 	if (path != nullptr)
-		strncpy(tmp->Path, path, MAX_DPATH - 1);
+		tmp->Path.assign(path);
 	tmp->ROMType = rd->type;
 	lstAvailableROMs.emplace_back(tmp);
 	romlist_add(path, rd);
@@ -191,23 +187,25 @@ static struct romdata* scan_single_rom_2(struct zfile* f)
 	return rd;
 }
 
-static int isromext(const char* path)
+static int isromext(const std::string& path)
 {
-	if (!path)
+	if (path.empty())
 		return 0;
-	auto* ext = _tcsrchr(path, '.');
-	if (!ext)
+	const auto ext_pos = path.find_last_of('.');
+	if (ext_pos == std::string::npos)
 		return 0;
-	ext++;
+	const std::string ext = path.substr(ext_pos + 1);
 
-	if (!_tcsicmp(ext, "rom") || !_tcsicmp(ext, "adf") || !_tcsicmp(ext, "key")
-		|| !_tcsicmp(ext, "a500") || !_tcsicmp(ext, "a1200") || !_tcsicmp(ext, "a4000"))
+	static const std::vector<std::string> extensions = { "rom", "adf", "key", "a500", "a1200", "a4000" };
+	if (std::find(extensions.begin(), extensions.end(), ext) != extensions.end())
 		return 1;
-	if (_tcslen (ext) >= 2 && toupper(ext[0]) == 'U' && isdigit (ext[1]))
+
+	if (ext.size() >= 2 && std::toupper(ext[0]) == 'U' && std::isdigit(ext[1]))
 		return 1;
+
 	for (auto i = 0; uae_archive_extensions[i]; i++)
 	{
-		if (!_tcsicmp(ext, uae_archive_extensions[i]))
+		if (strcasecmp(ext.c_str(), uae_archive_extensions[i]) == 0)
 			return 1;
 	}
 	return 0;
@@ -227,11 +225,11 @@ static int scan_rom_2(struct zfile* f, void* dummy)
 
 static void scan_rom(const std::string& path)
 {
-	if (!isromext(path.c_str())) {
+	if (!isromext(path)) {
 		//write_log("ROMSCAN: skipping file '%s', unknown extension\n", path);
 		return;
 	}
-	zfile_zopen(path.c_str(), scan_rom_2, nullptr);
+	zfile_zopen(path, scan_rom_2, nullptr);
 }
 
 void SymlinkROMs()
@@ -241,12 +239,11 @@ void SymlinkROMs()
 
 void RescanROMs()
 {
-	vector<string> dirs;
-	vector<string> files;
+	std::vector<std::string> dirs;
+	std::vector<std::string> files;
 	char path[MAX_DPATH];
 
 	romlist_clear();
-
 	ClearAvailableROMList();
 	get_rom_path(path, MAX_DPATH);
 
@@ -254,38 +251,37 @@ void RescanROMs()
 	read_directory(path, &dirs, &files);
 
 	// Root level scan
-	for (auto & file : files)
+	for (const auto& file : files)
 	{
-		std::string tmp_path = std::string(path).append(file);
-		scan_rom(tmp_path);
+		scan_rom(std::string(path) + file);
 	}
 
 	// Recursive scan
-	for (auto & dir : dirs)
+	for (const auto& dir : dirs)
 	{
 		if (dir != "..")
 		{
-			std::string full_path = std::string(path).append(dir);
+			std::string full_path = std::string(path) + dir;
 			read_directory(full_path, nullptr, &files);
-			for (auto & file : files)
+			for (const auto& file : files)
 			{
-				std::string tmp_path = full_path;
-				scan_rom(tmp_path.append("/").append(file));
+				scan_rom(full_path + "/" + file);
 			}
 		}
 	}
 
-	auto id = 1;
-	for (;;) {
+	for (int id = 1;; ++id)
+	{
 		auto* rd = getromdatabyid(id);
 		if (!rd)
 			break;
-		if (rd->crc32 == 0xffffffff && strncmp(rd->model, "AROS", 4) == 0)
-			addrom(rd, ":AROS");
-		if (rd->crc32 == 0xffffffff && rd->id == 63) {
-			addrom(rd, ":HRTMon");
+		if (rd->crc32 == 0xffffffff)
+		{
+			if (strncmp(rd->model, "AROS", 4) == 0)
+				addrom(rd, ":AROS");
+			else if (rd->id == 63)
+				addrom(rd, ":HRTMon");
 		}
-		id++;
 	}
 }
 
@@ -365,6 +361,7 @@ void disk_selection(const int drive, uae_prefs* prefs)
 	else
 		tmp = current_dir;
 	tmp = SelectFile("Select disk image file", tmp, diskfile_filter);
+	if (!tmp.empty())
 	{
 		if (strncmp(prefs->floppyslots[drive].df, tmp.c_str(), MAX_DPATH) != 0)
 		{
@@ -472,24 +469,27 @@ void gui_purge_events()
 
 int gui_update()
 {
-	char tmp[MAX_DPATH];
-
-	get_savestate_path(savestate_fname, MAX_DPATH - 1);
-	screenshot_filename = get_screenshot_path();
+	std::string filename;
+	std::string suffix = (current_state_num >= 1 && current_state_num <= 14) ?
+		"-" + std::to_string(current_state_num) : "";
 
 	if (strlen(currprefs.floppyslots[0].df) > 0)
-		extract_filename(currprefs.floppyslots[0].df, tmp);
+		filename = extract_filename(currprefs.floppyslots[0].df);
+	else if (currprefs.cdslots[0].inuse && strlen(currprefs.cdslots[0].name) > 0)
+		filename = extract_filename(currprefs.cdslots[0].name);
 	else
-		strncpy(tmp, last_loaded_config, MAX_DPATH - 1);
+	{
+		last_loaded_config[0] != '\0' ? filename = std::string(last_loaded_config) : filename = "default.uae";
+	}
 
-	strncat(savestate_fname, tmp, MAX_DPATH - 1);
-	screenshot_filename.append(std::string(tmp));
+	get_savestate_path(savestate_fname, MAX_DPATH - 1);
+	strncat(savestate_fname, filename.c_str(), MAX_DPATH - 1);
 	remove_file_extension(savestate_fname);
-	remove_file_extension(screenshot_filename);
-
-	std::string suffix = (currentStateNum >= 1 && currentStateNum <= 14) ?
-		"-" + std::to_string(currentStateNum) : "";
 	strncat(savestate_fname, (suffix + ".uss").c_str(), MAX_DPATH - 1);
+
+	screenshot_filename = get_screenshot_path();
+	screenshot_filename += filename;
+	screenshot_filename = remove_file_extension(screenshot_filename);
 	screenshot_filename.append(suffix + ".png");
 
 	return 0;
@@ -507,6 +507,7 @@ void gui_display(int shortcut)
 
 	if (setpaused(7)) {
 		inputdevice_unacquire();
+		//rawinput_release();
 		wait_keyrelease();
 		clearallkeys();
 		setmouseactive(0, 0);
@@ -540,7 +541,12 @@ void gui_display(int shortcut)
 		inputdevice_acquire(TRUE);
 		setmouseactive(0, 1);
 	}
+	//rawinput_alloc();
+	struct AmigaMonitor* mon = &AMonitors[0];
+	SDL_SetWindowGrab(mon->amiga_window, SDL_TRUE);
 	fpscounter_reset();
+	//screenshot_free();
+	//write_disk_history();
 	gui_active--;
 	here--;
 }

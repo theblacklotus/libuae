@@ -10,7 +10,9 @@
 #include "options.h"
 #include "disk.h"
 #include "gui_handling.h"
-#include "floppybridge/floppybridge_lib.h"
+#ifdef FLOPPYBRIDGE
+#include "floppybridge_lib.h"
+#endif
 #include "parser.h"
 
 static gcn::CheckBox* chkDFx[4];
@@ -35,7 +37,9 @@ static gcn::CheckBox* chkDBSmartSpeed;
 static gcn::CheckBox* chkDBAutoCache;
 static gcn::CheckBox* chkDBCableDriveB;
 
+#ifdef FLOPPYBRIDGE
 static std::vector<FloppyBridgeAPI::DriverInformation> driver_list{};
+#endif
 static const char* drive_speed_list[] = {"Turbo", "100% (compatible)", "200%", "400%", "800%"};
 static const int drive_speed_values[] = {0, 100, 200, 400, 800};
 
@@ -96,6 +100,7 @@ class DFxCheckActionListener : public gcn::ActionListener
 public:
 	void action(const gcn::ActionEvent& actionEvent) override
 	{
+#ifdef FLOPPYBRIDGE
 		if (actionEvent.getSource() == cboDBDriver)
 		{
 			changed_prefs.drawbridge_driver = cboDBDriver->getSelected();
@@ -130,6 +135,7 @@ public:
 			changed_prefs.drawbridge_connected_drive_b = chkDBCableDriveB->isSelected();
 		}
 		else
+#endif
 		{
 			for (auto i = 0; i < 4; ++i)
 			{
@@ -204,18 +210,19 @@ public:
 				if (strlen(changed_prefs.floppyslots[i].df) > 0)
 					tmp = std::string(changed_prefs.floppyslots[i].df);
 				else
-					tmp = current_dir;
+					tmp = get_floppy_path();
+
 				tmp = SelectFile("Select disk image file", tmp, diskfile_filter);
+				if (!tmp.empty())
 				{
 					if (strncmp(changed_prefs.floppyslots[i].df, tmp.c_str(), MAX_DPATH) != 0)
 					{
 						strncpy(changed_prefs.floppyslots[i].df, tmp.c_str(), MAX_DPATH);
 						disk_insert(i, tmp.c_str());
-						add_file_to_mru_list(lstMRUDiskList, tmp);
 						RefreshDiskListModel();
-						current_dir = extract_path(tmp);
 
 						AdjustDropDownControls();
+						SetLastActiveConfig(tmp.c_str());
 					}
 				}
 				cmdDFxSelect[i]->requestFocus();
@@ -264,6 +271,7 @@ public:
 							bIgnoreListChange = true;
 							cboDFxFile[i]->setSelected(0);
 							bIgnoreListChange = false;
+							SetLastActiveConfig(element.c_str());
 						}
 					}
 				}
@@ -328,6 +336,7 @@ public:
 			// Create 3.5" DD Disk
 			char diskname[MAX_DPATH];
 			tmp = SelectFile("Create 3.5\" DD disk file", current_dir, diskfile_filter, true);
+			if (!tmp.empty())
 			{
 				extract_filename(tmp.c_str(), diskname);
 				remove_file_extension(diskname);
@@ -345,6 +354,7 @@ public:
 			// Create 3.5" HD Disk
 			char diskname[MAX_DPATH];
 			tmp = SelectFile("Create 3.5\" HD disk file", current_dir, diskfile_filter, true);
+			if (!tmp.empty())
 			{
 				extract_filename(tmp.c_str(), diskname);
 				remove_file_extension(diskname);
@@ -368,7 +378,7 @@ void InitPanelFloppy(const config_category& category)
 	int posY = DISTANCE_BORDER;
 	int i;
 	const int textFieldWidth = category.panel->getWidth() - 2 * DISTANCE_BORDER;
-
+#ifdef FLOPPYBRIDGE
 	FloppyBridgeAPI::getDriverList(driver_list);
 	driverNameList.clear();
 	for (const auto &item : driver_list)
@@ -381,7 +391,7 @@ void InitPanelFloppy(const config_category& category)
 	for(const auto& port : serial_ports) {
 		serial_ports_list.add(port);
 	}
-
+#endif
 	dfxCheckActionListener = new DFxCheckActionListener();
 	driveTypeActionListener = new DriveTypeActionListener();
 	dfxButtonActionListener = new DFxButtonActionListener();
@@ -397,11 +407,17 @@ void InitPanelFloppy(const config_category& category)
 		id_string = "DF" + to_string(i) + ":";
 		chkDFx[i] = new gcn::CheckBox(id_string);
 		chkDFx[i]->setId(id_string);
+		chkDFx[i]->setBaseColor(gui_base_color);
+		chkDFx[i]->setBackgroundColor(gui_textbox_background_color);
+		chkDFx[i]->setForegroundColor(gui_foreground_color);
 		chkDFx[i]->addActionListener(dfxCheckActionListener);
 
 		cboDFxType[i] = new gcn::DropDown(&driveTypeList);
-		cboDFxType[i]->setBaseColor(gui_baseCol);
-		cboDFxType[i]->setBackgroundColor(colTextboxBackground);
+		cboDFxType[i]->setSize(150, cboDFxType[i]->getHeight());
+		cboDFxType[i]->setBaseColor(gui_base_color);
+		cboDFxType[i]->setBackgroundColor(gui_textbox_background_color);
+		cboDFxType[i]->setForegroundColor(gui_foreground_color);
+		cboDFxType[i]->setSelectionColor(gui_selection_color);
 		id_string = "cboType" + to_string(i);
 		cboDFxType[i]->setId(id_string);
 		cboDFxType[i]->addActionListener(driveTypeActionListener);
@@ -409,43 +425,52 @@ void InitPanelFloppy(const config_category& category)
 		chkDFxWriteProtect[i] = new gcn::CheckBox("Write-protected");
 		id_string = "chkWP" + to_string(i);
 		chkDFxWriteProtect[i]->setId(id_string);
+		chkDFxWriteProtect[i]->setBaseColor(gui_base_color);
+		chkDFxWriteProtect[i]->setBackgroundColor(gui_textbox_background_color);
+		chkDFxWriteProtect[i]->setForegroundColor(gui_foreground_color);
 		chkDFxWriteProtect[i]->addActionListener(dfxCheckActionListener);
-		
 
 		cmdDFxInfo[i] = new gcn::Button("?");
 		id_string = "cmdInfo" + to_string(i);
 		cmdDFxInfo[i]->setId(id_string);
 		cmdDFxInfo[i]->setSize(SMALL_BUTTON_WIDTH, SMALL_BUTTON_HEIGHT);
-		cmdDFxInfo[i]->setBaseColor(gui_baseCol);
+		cmdDFxInfo[i]->setBaseColor(gui_base_color);
+		cmdDFxInfo[i]->setForegroundColor(gui_foreground_color);
 		cmdDFxInfo[i]->addActionListener(dfxButtonActionListener);
 
 		cmdDFxEject[i] = new gcn::Button("Eject");
 		id_string = "cmdEject" + to_string(i);
 		cmdDFxEject[i]->setId(id_string);
 		cmdDFxEject[i]->setSize(SMALL_BUTTON_WIDTH * 2, SMALL_BUTTON_HEIGHT);
-		cmdDFxEject[i]->setBaseColor(gui_baseCol);
+		cmdDFxEject[i]->setBaseColor(gui_base_color);
+		cmdDFxEject[i]->setForegroundColor(gui_foreground_color);
 		cmdDFxEject[i]->addActionListener(dfxButtonActionListener);
 
 		cmdDFxSelect[i] = new gcn::Button("...");
 		id_string = "cmdSel" + to_string(i);
 		cmdDFxSelect[i]->setId(id_string);
 		cmdDFxSelect[i]->setSize(SMALL_BUTTON_WIDTH, SMALL_BUTTON_HEIGHT);
-		cmdDFxSelect[i]->setBaseColor(gui_baseCol);
+		cmdDFxSelect[i]->setBaseColor(gui_base_color);
+		cmdDFxSelect[i]->setForegroundColor(gui_foreground_color);
 		cmdDFxSelect[i]->addActionListener(dfxButtonActionListener);
 
 		cboDFxFile[i] = new gcn::DropDown(&diskfileList);
 		id_string = "cboDisk" + to_string(i);
 		cboDFxFile[i]->setId(id_string);
 		cboDFxFile[i]->setSize(textFieldWidth, cboDFxFile[i]->getHeight());
-		cboDFxFile[i]->setBaseColor(gui_baseCol);
-		cboDFxFile[i]->setBackgroundColor(colTextboxBackground);
+		cboDFxFile[i]->setBaseColor(gui_base_color);
+		cboDFxFile[i]->setBackgroundColor(gui_textbox_background_color);
+		cboDFxFile[i]->setForegroundColor(gui_foreground_color);
+		cboDFxFile[i]->setSelectionColor(gui_selection_color);
 		cboDFxFile[i]->addActionListener(diskFileActionListener);
 	}
 
 	lblDriveSpeed = new gcn::Label("Floppy Drive Emulation Speed:");
 	sldDriveSpeed = new gcn::Slider(0, 4);
 	sldDriveSpeed->setSize(110, SLIDER_HEIGHT);
-	sldDriveSpeed->setBaseColor(gui_baseCol);
+	sldDriveSpeed->setBaseColor(gui_base_color);
+	sldDriveSpeed->setBackgroundColor(gui_textbox_background_color);
+	sldDriveSpeed->setForegroundColor(gui_foreground_color);
 	sldDriveSpeed->setMarkerLength(20);
 	sldDriveSpeed->setStepLength(1);
 	sldDriveSpeed->setId("sldDriveSpeed");
@@ -454,13 +479,15 @@ void InitPanelFloppy(const config_category& category)
 
 	cmdCreateDDDisk = new gcn::Button("Create 3.5\" DD disk");
 	cmdCreateDDDisk->setSize(cmdCreateDDDisk->getWidth() + 10, BUTTON_HEIGHT);
-	cmdCreateDDDisk->setBaseColor(gui_baseCol);
+	cmdCreateDDDisk->setBaseColor(gui_base_color);
+	cmdCreateDDDisk->setForegroundColor(gui_foreground_color);
 	cmdCreateDDDisk->setId("cmdCreateDDDisk");
 	cmdCreateDDDisk->addActionListener(createDiskActionListener);
 
 	cmdCreateHDDisk = new gcn::Button("Create 3.5\" HD disk");
 	cmdCreateHDDisk->setSize(cmdCreateHDDisk->getWidth() + 10, BUTTON_HEIGHT);
-	cmdCreateHDDisk->setBaseColor(gui_baseCol);
+	cmdCreateHDDisk->setBaseColor(gui_base_color);
+	cmdCreateHDDisk->setForegroundColor(gui_foreground_color);
 	cmdCreateHDDisk->setId("cmdCreateHDDisk");
 	cmdCreateHDDisk->addActionListener(createDiskActionListener);
 
@@ -468,42 +495,58 @@ void InitPanelFloppy(const config_category& category)
 	cboDBDriver = new gcn::DropDown(&driverNameList);
 	cboDBDriver->setId("cboDBDriver");
 	cboDBDriver->setSize(350, cboDBDriver->getHeight());
-	cboDBDriver->setBaseColor(gui_baseCol);
-	cboDBDriver->setBackgroundColor(colTextboxBackground);
+	cboDBDriver->setBaseColor(gui_base_color);
+	cboDBDriver->setBackgroundColor(gui_textbox_background_color);
+	cboDBDriver->setForegroundColor(gui_foreground_color);
+	cboDBDriver->setSelectionColor(gui_selection_color);
 	cboDBDriver->addActionListener(dfxCheckActionListener);
 
 	chkDBSerialAuto = new gcn::CheckBox("DrawBridge: Auto-Detect serial port");
 	chkDBSerialAuto->setId("chkDBSerialAuto");
+	chkDBSerialAuto->setBaseColor(gui_base_color);
+	chkDBSerialAuto->setBackgroundColor(gui_textbox_background_color);
+	chkDBSerialAuto->setForegroundColor(gui_foreground_color);
 	chkDBSerialAuto->addActionListener(dfxCheckActionListener);
 
 	cboDBSerialPort = new gcn::DropDown(&serial_ports_list);
 	cboDBSerialPort->setSize(200, cboDBSerialPort->getHeight());
-	cboDBSerialPort->setBaseColor(gui_baseCol);
-	cboDBSerialPort->setBackgroundColor(colTextboxBackground);
+	cboDBSerialPort->setBaseColor(gui_base_color);
+	cboDBSerialPort->setBackgroundColor(gui_textbox_background_color);
+	cboDBSerialPort->setForegroundColor(gui_foreground_color);
+	cboDBSerialPort->setSelectionColor(gui_selection_color);
 	cboDBSerialPort->setId("cboDBSerialPort");
 	cboDBSerialPort->addActionListener(dfxCheckActionListener);
 
 	chkDBSmartSpeed = new gcn::CheckBox("DrawBridge: Smart Speed (Dynamically switch on Turbo)");
 	chkDBSmartSpeed->setId("chkDBSmartSpeed");
+	chkDBSmartSpeed->setBaseColor(gui_base_color);
+	chkDBSmartSpeed->setBackgroundColor(gui_textbox_background_color);
+	chkDBSmartSpeed->setForegroundColor(gui_foreground_color);
 	chkDBSmartSpeed->addActionListener(dfxCheckActionListener);
 
 	chkDBAutoCache = new gcn::CheckBox("DrawBridge: Auto-Cache (Cache disk data while drive is idle)");
 	chkDBAutoCache->setId("chkDBAutoCache");
+	chkDBAutoCache->setBaseColor(gui_base_color);
+	chkDBAutoCache->setBackgroundColor(gui_textbox_background_color);
+	chkDBAutoCache->setForegroundColor(gui_foreground_color);
 	chkDBAutoCache->addActionListener(dfxCheckActionListener);
 
 	chkDBCableDriveB = new gcn::CheckBox("DrawBridge: Connected as Drive B");
 	chkDBCableDriveB->setId("chkDBCableDriveB");
+	chkDBCableDriveB->setBaseColor(gui_base_color);
+	chkDBCableDriveB->setBackgroundColor(gui_textbox_background_color);
+	chkDBCableDriveB->setForegroundColor(gui_foreground_color);
 	chkDBCableDriveB->addActionListener(dfxCheckActionListener);
 
 	for (i = 0; i < 4; ++i)
 	{
 		posX = DISTANCE_BORDER;
 		category.panel->add(chkDFx[i], posX, posY);
-		posX += chkDFx[i]->getWidth() + DISTANCE_NEXT_X * 2;
+		posX += chkDFx[i]->getWidth() + DISTANCE_NEXT_X;
 		category.panel->add(cboDFxType[i], posX, posY);
-		posX += cboDFxType[i]->getWidth() + DISTANCE_NEXT_X * 2;
+		posX += cboDFxType[i]->getWidth() + DISTANCE_NEXT_X;
 		category.panel->add(chkDFxWriteProtect[i], posX, posY);
-		posX += 3 + chkDFxWriteProtect[i]->getWidth() + 4 * DISTANCE_NEXT_X;
+		posX += 3 + chkDFxWriteProtect[i]->getWidth() + 3 * DISTANCE_NEXT_X;
 		category.panel->add(cmdDFxInfo[i], posX, posY);
 		posX += cmdDFxInfo[i]->getWidth() + DISTANCE_NEXT_X;
 		category.panel->add(cmdDFxEject[i], posX, posY);
@@ -537,7 +580,8 @@ void InitPanelFloppy(const config_category& category)
 	grpDrawBridge->setMovable(false);
 	grpDrawBridge->setSize(category.panel->getWidth() - DISTANCE_BORDER * 2, TITLEBAR_HEIGHT + chkDBCableDriveB->getY() + chkDBCableDriveB->getHeight() + DISTANCE_NEXT_Y);
 	grpDrawBridge->setTitleBarHeight(TITLEBAR_HEIGHT);
-	grpDrawBridge->setBaseColor(gui_baseCol);
+	grpDrawBridge->setBaseColor(gui_base_color);
+	grpDrawBridge->setForegroundColor(gui_foreground_color);
 
 	category.panel->add(grpDrawBridge);
 
@@ -612,8 +656,8 @@ void RefreshPanelFloppy()
 	int i;
 	auto prev_available = true;
 
-	AdjustDropDownControls();
 	RefreshDiskListModel();
+	AdjustDropDownControls();
 
 	changed_prefs.nr_floppies = 0;
 	for (i = 0; i < 4; ++i)
@@ -655,6 +699,7 @@ void RefreshPanelFloppy()
 	chkDBAutoCache->setEnabled(false);
 	chkDBSmartSpeed->setEnabled(false);
 	chkDBCableDriveB->setEnabled(false);
+#ifdef FLOPPYBRIDGE
 	for (i = 0; i < 4; ++i)
 	{
 		// is DrawBridge selected?
@@ -701,13 +746,14 @@ void RefreshPanelFloppy()
 			break;
 		}
 	}
+#endif
 }
 
 bool HelpPanelFloppy(std::vector<std::string>& helptext)
 {
 	helptext.clear();
 	helptext.emplace_back("You can enable/disable each drive by clicking the checkbox next to DFx or by selecting");
-	helptext.emplace_back(R"(the drive type in the dropdown control. The "3.5" DD" drive type is the right choice)");
+	helptext.emplace_back(R"(the drive type in the dropdown control. The 3.5" DD drive type is the right choice)");
 	helptext.emplace_back("for nearly all ADF and ADZ floppy image files.");
 	helptext.emplace_back(" ");
 	helptext.emplace_back("The option \"Write-protected\" indicates if the emulator can write to the ADF or not.");
@@ -726,7 +772,7 @@ bool HelpPanelFloppy(std::vector<std::string>& helptext)
 	helptext.emplace_back("DrawBridge-related options below. You can use these options to select which DrawBridge");
 	helptext.emplace_back("driver to use, as well as optionally enable some of the extra features the driver offers.");
 	helptext.emplace_back(" ");
-	helptext.emplace_back(R"(You can also use the "Create 3.5\" DD disk" and "Create 3.5\" HD disk", to make)");
+	helptext.emplace_back(R"(You can also use the "Create 3.5" DD disk" and "Create 3.5" HD disk" buttons, to make)");
 	helptext.emplace_back("a new and empty disk image, for use with the emulator.");
 	return true;
 }

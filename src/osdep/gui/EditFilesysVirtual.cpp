@@ -50,11 +50,13 @@ public:
 		{
 			wndEditFilesysVirtual->releaseModalFocus();
 			const std::string tmp = SelectFolder("Select folder", txtPath->getText());
+			if (!tmp.empty())
 			{
 				txtPath->setText(tmp);
 				txtVolume->setText(volName);
 				default_fsvdlg(&current_fsvdlg);
-				CreateDefaultDevicename(current_fsvdlg.ci.devname);
+				if (current_fsvdlg.ci.devname[0] == 0)
+					CreateDefaultDevicename(current_fsvdlg.ci.devname);
 				_tcscpy(current_fsvdlg.ci.volname, current_fsvdlg.ci.devname);
 				_tcscpy(current_fsvdlg.ci.rootdir, tmp.c_str());
 			}
@@ -101,7 +103,8 @@ static void InitEditFilesysVirtual()
 	wndEditFilesysVirtual = new gcn::Window("Edit");
 	wndEditFilesysVirtual->setSize(DIALOG_WIDTH, DIALOG_HEIGHT);
 	wndEditFilesysVirtual->setPosition((GUI_WIDTH - DIALOG_WIDTH) / 2, (GUI_HEIGHT - DIALOG_HEIGHT) / 2);
-	wndEditFilesysVirtual->setBaseColor(gui_baseCol);
+	wndEditFilesysVirtual->setBaseColor(gui_base_color);
+	wndEditFilesysVirtual->setForegroundColor(gui_foreground_color);
 	wndEditFilesysVirtual->setCaption("Volume settings");
 	wndEditFilesysVirtual->setTitleBarHeight(TITLEBAR_HEIGHT);
 
@@ -111,7 +114,8 @@ static void InitEditFilesysVirtual()
 	cmdOK->setSize(BUTTON_WIDTH, BUTTON_HEIGHT);
 	cmdOK->setPosition(DIALOG_WIDTH - DISTANCE_BORDER - 2 * BUTTON_WIDTH - DISTANCE_NEXT_X,
 	                   DIALOG_HEIGHT - 2 * DISTANCE_BORDER - BUTTON_HEIGHT - 10);
-	cmdOK->setBaseColor(gui_baseCol);
+	cmdOK->setBaseColor(gui_base_color);
+	cmdOK->setForegroundColor(gui_foreground_color);
 	cmdOK->setId("cmdVirtOK");
 	cmdOK->addActionListener(filesysVirtualActionListener);
 
@@ -119,7 +123,8 @@ static void InitEditFilesysVirtual()
 	cmdCancel->setSize(BUTTON_WIDTH, BUTTON_HEIGHT);
 	cmdCancel->setPosition(DIALOG_WIDTH - DISTANCE_BORDER - BUTTON_WIDTH,
 	                       DIALOG_HEIGHT - 2 * DISTANCE_BORDER - BUTTON_HEIGHT - 10);
-	cmdCancel->setBaseColor(gui_baseCol);
+	cmdCancel->setBaseColor(gui_base_color);
+	cmdCancel->setForegroundColor(gui_foreground_color);
 	cmdCancel->setId("cmdVirtCancel");
 	cmdCancel->addActionListener(filesysVirtualActionListener);
 
@@ -128,36 +133,55 @@ static void InitEditFilesysVirtual()
 	txtDevice = new gcn::TextField();
 	txtDevice->setSize(60, TEXTFIELD_HEIGHT);
 	txtDevice->setId("txtVirtDevice");
+	txtDevice->setBaseColor(gui_base_color);
+	txtDevice->setBackgroundColor(gui_textbox_background_color);
+	txtDevice->setForegroundColor(gui_foreground_color);
 
 	lblVolume = new gcn::Label("Volume Label:");
 	lblVolume->setAlignment(gcn::Graphics::RIGHT);
 	txtVolume = new gcn::TextField();
 	txtVolume->setSize(60, TEXTFIELD_HEIGHT);
 	txtVolume->setId("txtVirtVolume");
+	txtVolume->setBaseColor(gui_base_color);
+	txtVolume->setBackgroundColor(gui_textbox_background_color);
+	txtVolume->setForegroundColor(gui_foreground_color);
 
 	lblPath = new gcn::Label("Path:");
 	lblPath->setAlignment(gcn::Graphics::RIGHT);
 	txtPath = new gcn::TextField();
 	txtPath->setSize(380, TEXTFIELD_HEIGHT);
 	txtPath->setId("txtVirtPath");
+	txtPath->setBaseColor(gui_base_color);
+	txtPath->setBackgroundColor(gui_textbox_background_color);
+	txtPath->setForegroundColor(gui_foreground_color);
 	
 	cmdPath = new gcn::Button("...");
 	cmdPath->setSize(SMALL_BUTTON_WIDTH, SMALL_BUTTON_HEIGHT);
-	cmdPath->setBaseColor(gui_baseCol);
+	cmdPath->setBaseColor(gui_base_color);
+	cmdPath->setForegroundColor(gui_foreground_color);
 	cmdPath->setId("cmdVirtPath");
 	cmdPath->addActionListener(filesysVirtualActionListener);
 
 	chkReadWrite = new gcn::CheckBox("Read/Write", true);
+	chkReadWrite->setBaseColor(gui_base_color);
+	chkReadWrite->setForegroundColor(gui_foreground_color);
+	chkReadWrite->setBackgroundColor(gui_textbox_background_color);
 	chkReadWrite->setId("chkVirtRW");
 
 	chkAutoboot = new gcn::CheckBox("Bootable", true);
 	chkAutoboot->setId("chkAutoboot");
+	chkAutoboot->setBaseColor(gui_base_color);
+	chkAutoboot->setBackgroundColor(gui_textbox_background_color);
+	chkAutoboot->setForegroundColor(gui_foreground_color);
 	chkAutoboot->addActionListener(filesysVirtualActionListener);
 
 	lblBootPri = new gcn::Label("Boot priority:");
 	lblBootPri->setAlignment(gcn::Graphics::RIGHT);
 	txtBootPri = new gcn::TextField();
 	txtBootPri->setSize(40, TEXTFIELD_HEIGHT);
+	txtBootPri->setBaseColor(gui_base_color);
+	txtBootPri->setBackgroundColor(gui_textbox_background_color);
+	txtBootPri->setForegroundColor(gui_foreground_color);
 
 	int posY = DISTANCE_BORDER;
 	int posX = DISTANCE_BORDER;
@@ -242,22 +266,22 @@ static void EditFilesysVirtualLoop()
 				break;
 
 			case VK_UP:
-				if (HandleNavigation(DIRECTION_UP))
+				if (handle_navigation(DIRECTION_UP))
 					continue; // Don't change value when enter ComboBox -> don't send event to control
 				break;
 
 			case VK_DOWN:
-				if (HandleNavigation(DIRECTION_DOWN))
+				if (handle_navigation(DIRECTION_DOWN))
 					continue; // Don't change value when enter ComboBox -> don't send event to control
 				break;
 
 			case VK_LEFT:
-				if (HandleNavigation(DIRECTION_LEFT))
+				if (handle_navigation(DIRECTION_LEFT))
 					continue; // Don't change value when enter Slider -> don't send event to control
 				break;
 
 			case VK_RIGHT:
-				if (HandleNavigation(DIRECTION_RIGHT))
+				if (handle_navigation(DIRECTION_RIGHT))
 					continue; // Don't change value when enter Slider -> don't send event to control
 				break;
 
@@ -281,28 +305,28 @@ static void EditFilesysVirtualLoop()
 				
 				if (SDL_JoystickGetButton(gui_joystick, did->mapping.button[SDL_CONTROLLER_BUTTON_DPAD_UP]) || (hat & SDL_HAT_UP)) // dpad
 				{
-					if (HandleNavigation(DIRECTION_UP))
+					if (handle_navigation(DIRECTION_UP))
 						continue; // Don't change value when enter Slider -> don't send event to control
 					PushFakeKey(SDLK_UP);
 					break;
 				}
 				if (SDL_JoystickGetButton(gui_joystick, did->mapping.button[SDL_CONTROLLER_BUTTON_DPAD_DOWN]) || (hat & SDL_HAT_DOWN)) // dpad
 				{
-					if (HandleNavigation(DIRECTION_DOWN))
+					if (handle_navigation(DIRECTION_DOWN))
 						continue; // Don't change value when enter Slider -> don't send event to control
 					PushFakeKey(SDLK_DOWN);
 					break;
 				}
 				if (SDL_JoystickGetButton(gui_joystick, did->mapping.button[SDL_CONTROLLER_BUTTON_DPAD_RIGHT]) || (hat & SDL_HAT_RIGHT)) // dpad
 				{
-					if (HandleNavigation(DIRECTION_RIGHT))
+					if (handle_navigation(DIRECTION_RIGHT))
 						continue; // Don't change value when enter Slider -> don't send event to control
 					PushFakeKey(SDLK_RIGHT);
 					break;
 				}
 				if (SDL_JoystickGetButton(gui_joystick, did->mapping.button[SDL_CONTROLLER_BUTTON_DPAD_LEFT]) || (hat & SDL_HAT_LEFT)) // dpad
 				{
-					if (HandleNavigation(DIRECTION_LEFT))
+					if (handle_navigation(DIRECTION_LEFT))
 						continue; // Don't change value when enter Slider -> don't send event to control
 					PushFakeKey(SDLK_LEFT);
 					break;
@@ -352,7 +376,7 @@ static void EditFilesysVirtualLoop()
 					if (event.jaxis.value > joystick_dead_zone && last_x != 1)
 					{
 						last_x = 1;
-						if (HandleNavigation(DIRECTION_RIGHT))
+						if (handle_navigation(DIRECTION_RIGHT))
 							continue; // Don't change value when enter Slider -> don't send event to control
 						PushFakeKey(SDLK_RIGHT);
 						break;
@@ -360,7 +384,7 @@ static void EditFilesysVirtualLoop()
 					if (event.jaxis.value < -joystick_dead_zone && last_x != -1)
 					{
 						last_x = -1;
-						if (HandleNavigation(DIRECTION_LEFT))
+						if (handle_navigation(DIRECTION_LEFT))
 							continue; // Don't change value when enter Slider -> don't send event to control
 						PushFakeKey(SDLK_LEFT);
 						break;
@@ -373,7 +397,7 @@ static void EditFilesysVirtualLoop()
 					if (event.jaxis.value < -joystick_dead_zone && last_y != -1)
 					{
 						last_y = -1;
-						if (HandleNavigation(DIRECTION_UP))
+						if (handle_navigation(DIRECTION_UP))
 							continue; // Don't change value when enter Slider -> don't send event to control
 						PushFakeKey(SDLK_UP);
 						break;
@@ -381,7 +405,7 @@ static void EditFilesysVirtualLoop()
 					if (event.jaxis.value > joystick_dead_zone && last_y != 1)
 					{
 						last_y = 1;
-						if (HandleNavigation(DIRECTION_DOWN))
+						if (handle_navigation(DIRECTION_DOWN))
 							continue; // Don't change value when enter Slider -> don't send event to control
 						PushFakeKey(SDLK_DOWN);
 						break;
@@ -495,7 +519,7 @@ bool EditFilesysVirtual(const int unit_no)
 
 	mountedinfo mi{};
 	uaedev_config_data* uci;
-	std::string strdevname, strvolname, strroot;
+	std::string strdevname, strvolname;
 	char tmp[32];
 
 	dialogResult = false;
@@ -519,8 +543,7 @@ bool EditFilesysVirtual(const int unit_no)
 	txtDevice->setText(strdevname);
 	strvolname.assign(current_fsvdlg.ci.volname);
 	txtVolume->setText(strvolname);
-	strroot.assign(current_fsvdlg.ci.rootdir);
-	txtPath->setText(strroot);
+	txtPath->setText(get_harddrive_path());
 	chkReadWrite->setSelected(!current_fsvdlg.ci.readonly);
 	chkAutoboot->setSelected(current_fsvdlg.ci.bootpri != BOOTPRI_NOAUTOBOOT);
 	snprintf(tmp, sizeof(tmp) - 1, "%d", current_fsvdlg.ci.bootpri >= -127 ? current_fsvdlg.ci.bootpri : -127);
@@ -559,8 +582,6 @@ bool EditFilesysVirtual(const int unit_no)
 			else if (uci->configoffset >= 0)
 				filesys_eject(uci->configoffset);
 		}
-
-		current_dir = extract_path(txtPath->getText());
 	}
 
 	ExitEditFilesysVirtual();

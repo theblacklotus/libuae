@@ -678,6 +678,9 @@ static void set_hblanking_limits(void)
 	bool hardwired = !dp_for_drawing || !ce_is_extblankset(colors_for_drawing.extra);
 	bool doblank = false;
 	int hbstrt = ((maxhpos_short + 8) << CCK_SHRES_SHIFT) - 3;
+	if (!ecs_denise) {
+		hbstrt -= 4;
+	}
 	int hbstop = (47 << CCK_SHRES_SHIFT) - 7;
 
 	if (currprefs.gfx_overscanmode < OVERSCANMODE_OVERSCAN) {
@@ -1521,7 +1524,7 @@ static bool get_genlock_very_rare_and_complex_case(uae_u8 v)
 		} else {
 			// color key match?
 			if (aga_mode) {
-				if (colors_for_drawing.color_regs_aga[v] & 0x80000000)
+				if (colors_for_drawing.color_regs_aga[v] & COLOR_CHANGE_GENLOCK)
 					return false;
 			} else {
 				if (colors_for_drawing.color_regs_ecs[v] & 0x8000)
@@ -1951,7 +1954,7 @@ static uae_u32 shsprite(int dpix, uae_u32 spix_val, uae_u32 v, int add, int spr)
 	struct spritepixelsbuf *spb = &spritepixels[dpix];
 	int sdpix = dpix;
 	if (spb->flags & 2) {
-		sdpix -= add;
+		sdpix -= add >> 1;
 	}
 	int mask = 3;
 	sprcol1 = sh_render_sprites(sdpix, bpldualpf, spix_val, 0);
@@ -4207,7 +4210,6 @@ static void center_image (void)
 	max_drawn_amiga_line_tmp >>= linedbl;
 
 	thisframe_y_adjust = minfirstline;
-
 	if (currprefs.gfx_ycenter && !fd->gfx_filter_autoscale) {
 
 		if (thisframe_first_drawn_line >= 0 && thisframe_last_drawn_line > thisframe_first_drawn_line) {
@@ -4571,19 +4573,32 @@ static void draw_lightpen_cursor(int monid, int x, int y, int line, int onscreen
 static void lightpen_update(struct vidbuffer *vb, int lpnum)
 {
 	struct vidbuf_description *vidinfo = &adisplays[vb->monitor_id].gfxvidinfo;
-	if (lightpen_x[lpnum] < 0 || lightpen_y[lpnum] < 0)
+	if (lightpen_x[lpnum] < 0 && lightpen_y[lpnum] < 0)
 		return;
 
-	if (lightpen_x[lpnum] < LIGHTPEN_WIDTH + 1)
-		lightpen_x[lpnum] = LIGHTPEN_WIDTH + 1;
-	if (lightpen_x[lpnum] >= vidinfo->drawbuffer.inwidth - LIGHTPEN_WIDTH - 1)
-		lightpen_x[lpnum] = vidinfo->drawbuffer.inwidth - LIGHTPEN_WIDTH - 2;
-	if (lightpen_y[lpnum] < LIGHTPEN_HEIGHT + 1)
-		lightpen_y[lpnum] = LIGHTPEN_HEIGHT + 1;
-	if (lightpen_y[lpnum] >= vidinfo->drawbuffer.inheight - LIGHTPEN_HEIGHT - 1)
-		lightpen_y[lpnum] = vidinfo->drawbuffer.inheight - LIGHTPEN_HEIGHT - 2;
-	if (lightpen_y[lpnum] >= max_ypos_thisframe1 - LIGHTPEN_HEIGHT - 1)
-		lightpen_y[lpnum] = max_ypos_thisframe1 - LIGHTPEN_HEIGHT - 2;
+	bool out = false;
+	int extra = 2;
+
+	if (lightpen_x[lpnum] < -extra)
+		lightpen_x[lpnum] = -extra;
+	if (lightpen_x[lpnum] >= vidinfo->drawbuffer.inwidth + extra)
+		lightpen_x[lpnum] = vidinfo->drawbuffer.inwidth + extra;
+	if (lightpen_y[lpnum] < -extra)
+		lightpen_y[lpnum] = -extra;
+	if (lightpen_y[lpnum] >= vidinfo->drawbuffer.inheight + extra)
+		lightpen_y[lpnum] = vidinfo->drawbuffer.inheight + extra;
+	if (lightpen_y[lpnum] >= max_ypos_thisframe1)
+		lightpen_y[lpnum] = max_ypos_thisframe1;
+
+	if (lightpen_x[lpnum] < 0 || lightpen_y[lpnum] < 0) {
+		out = true;
+	}
+	if (lightpen_x[lpnum] >= vidinfo->drawbuffer.inwidth) {
+		out = true;
+	}
+	if (lightpen_y[lpnum] >= max_ypos_thisframe1) {
+		out = true;
+	}
 
 	int cx = (((lightpen_x[lpnum] + visible_left_border) >> lores_shift) >> 1) + 29;
 
@@ -4594,14 +4609,17 @@ static void lightpen_update(struct vidbuffer *vb, int lpnum)
 	cx += currprefs.lightpen_offset[0];
 	cy += currprefs.lightpen_offset[1];
 
-	if (cx < 0x18) {
-		cx = 0x18;
+	if (cx <= 0x18 - 1) {
+		cx = 0x18 - 1;
+		out = true;
 	}
-	if (cy < minfirstline) {
-		cy = minfirstline;
+	if (cy <= minfirstline - 1) {
+		cy = minfirstline - 1;
+		out = true;
 	}
 	if (cy >= maxvpos) {
-		cy = maxvpos - 1;
+		cy = maxvpos;
+		out = true;
 	}
 
 	if (currprefs.lightpen_crosshair && lightpen_active) {
@@ -4618,8 +4636,8 @@ static void lightpen_update(struct vidbuffer *vb, int lpnum)
 	lightpen_y1[lpnum] = lightpen_y[lpnum] - LIGHTPEN_HEIGHT / 2 - 1 + thisframe_y_adjust;
 	lightpen_y2[lpnum] = lightpen_y1[lpnum] + LIGHTPEN_HEIGHT + 1 + thisframe_y_adjust;
 
-	lightpen_cx[lpnum] = cx;
-	lightpen_cy[lpnum] = cy;
+	lightpen_cx[lpnum] = out ? -1 : cx;
+	lightpen_cy[lpnum] = out ? -1 : cy;
 }
 
 static void refresh_indicator_init(void)
@@ -4794,7 +4812,7 @@ void draw_lines(int end, int section)
 			return;
 	}
 
-	int section_color_cnt = 4;
+	//int section_color_cnt = 4;
 
 	vidinfo->outbuffer = vb;
 	if (!lockscr(vb, false, vb->last_drawn_line ? false : true, display_reset > 0))
@@ -5021,7 +5039,7 @@ static void finish_drawing_frame(bool drawlines)
 		vidinfo->drawbuffer.tempbufferinuse = true;
 	}
 #endif
-		
+
 #ifdef CD32
 	// cd32 fmv
 	if (!currprefs.monitoremu && vidinfo->tempbuffer.bufmem_allocated && currprefs.cs_cd32fmv) {
@@ -5185,9 +5203,13 @@ void vsync_handle_redraw(int long_field, int lof_changed, uae_u16 bplcon0p, uae_
 		if (!initial) {
 			if (ad->framecnt == 0) {
 #ifdef AMIBERRY
-				if (currprefs.multithreaded_drawing)
+				if (currprefs.multithreaded_drawing && drawing_tid)
 				{
-					if (drawing_tid)
+					if (quit_program < 0)
+					{
+						quit_drawing_thread();
+					}
+					else
 					{
 						while (drawing_thread_busy)
 							sleep_micros(10);
@@ -5223,12 +5245,9 @@ void vsync_handle_redraw(int long_field, int lof_changed, uae_u16 bplcon0p, uae_
 
 		if (quit_program < 0) {
 #ifdef AMIBERRY
-			if (currprefs.multithreaded_drawing)
+			if (currprefs.multithreaded_drawing && drawing_tid)
 			{
-				if (drawing_tid)
-				{
-					quit_drawing_thread();
-				}
+				quit_drawing_thread();
 			}
 #endif
 #ifdef SAVESTATE

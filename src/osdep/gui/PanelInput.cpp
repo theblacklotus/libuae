@@ -296,7 +296,7 @@ public:
 		else if (actionEvent.getSource() == cmdRemap0)
 		{
 			const auto host_joy_id = changed_prefs.jports[0].id - JSEM_JOYS;
-			auto mapping = show_controller_map(host_joy_id, false);
+			const auto mapping = show_controller_map(host_joy_id, false);
 			if (!mapping.empty())
 			{
 				SDL_GameControllerAddMapping(mapping.c_str());
@@ -307,7 +307,7 @@ public:
 		else if (actionEvent.getSource() == cmdRemap1)
 		{
 			const auto host_joy_id = changed_prefs.jports[1].id - JSEM_JOYS;
-			auto mapping = show_controller_map(host_joy_id, false);
+			const auto mapping = show_controller_map(host_joy_id, false);
 			if (!mapping.empty())
 			{
 				SDL_GameControllerAddMapping(mapping.c_str());
@@ -349,28 +349,36 @@ void InitPanelInput(const config_category& category)
 	{
 		joys[i] = new gcn::DropDown(&ctrlPortList);
 		joys[i]->setSize(textFieldWidth, joys[i]->getHeight());
-		joys[i]->setBaseColor(gui_baseCol);
-		joys[i]->setBackgroundColor(colTextboxBackground);
+		joys[i]->setBaseColor(gui_base_color);
+		joys[i]->setBackgroundColor(gui_textbox_background_color);
+		joys[i]->setForegroundColor(gui_foreground_color);
+		joys[i]->setSelectionColor(gui_selection_color);
 		joys[i]->addActionListener(inputPortsActionListener);
 
 		joysaf[i] = new gcn::DropDown(&autoFireList);
 		joysaf[i]->setSize(200, joysaf[i]->getHeight());
-		joysaf[i]->setBaseColor(gui_baseCol);
-		joysaf[i]->setBackgroundColor(colTextboxBackground);
+		joysaf[i]->setBaseColor(gui_base_color);
+		joysaf[i]->setBackgroundColor(gui_textbox_background_color);
+		joysaf[i]->setForegroundColor(gui_foreground_color);
+		joysaf[i]->setSelectionColor(gui_selection_color);
 		joysaf[i]->addActionListener(inputPortsActionListener);
 
 		if (i < 2)
 		{
 			joysm[i] = new gcn::DropDown(&ctrlPortModeList);
 			joysm[i]->setSize(150, joysm[i]->getHeight());
-			joysm[i]->setBaseColor(gui_baseCol);
-			joysm[i]->setBackgroundColor(colTextboxBackground);
+			joysm[i]->setBaseColor(gui_base_color);
+			joysm[i]->setBackgroundColor(gui_textbox_background_color);
+			joysm[i]->setForegroundColor(gui_foreground_color);
+			joysm[i]->setSelectionColor(gui_selection_color);
 			joysm[i]->addActionListener(inputPortsActionListener);
 
 			joysmm[i] = new gcn::DropDown(&ctrlPortMouseModeList);
 			joysmm[i]->setSize(95, joysmm[i]->getHeight());
-			joysmm[i]->setBaseColor(gui_baseCol);
-			joysmm[i]->setBackgroundColor(colTextboxBackground);
+			joysmm[i]->setBaseColor(gui_base_color);
+			joysmm[i]->setBackgroundColor(gui_textbox_background_color);
+			joysmm[i]->setForegroundColor(gui_foreground_color);
+			joysmm[i]->setSelectionColor(gui_selection_color);
 			joysmm[i]->addActionListener(inputPortsActionListener);
 		}
 		
@@ -404,19 +412,22 @@ void InitPanelInput(const config_category& category)
 	cmdRemap0 = new gcn::Button("Remap");
 	cmdRemap0->setId("cmdRemap0");
 	cmdRemap0->setSize(BUTTON_WIDTH, SMALL_BUTTON_HEIGHT);
-	cmdRemap0->setBaseColor(gui_baseCol);
+	cmdRemap0->setBaseColor(gui_base_color);
+	cmdRemap0->setForegroundColor(gui_foreground_color);
 	cmdRemap0->addActionListener(inputActionListener);
 
 	cmdRemap1 = new gcn::Button("Remap");
 	cmdRemap1->setId("cmdRemap1");
 	cmdRemap1->setSize(BUTTON_WIDTH, SMALL_BUTTON_HEIGHT);
-	cmdRemap1->setBaseColor(gui_baseCol);
+	cmdRemap1->setBaseColor(gui_base_color);
+	cmdRemap1->setForegroundColor(gui_foreground_color);
 	cmdRemap1->addActionListener(inputActionListener);
 	
 	cmdSwapPorts = new gcn::Button("Swap ports");
 	cmdSwapPorts->setId("cmdSwapPorts");
 	cmdSwapPorts->setSize(150, BUTTON_HEIGHT);
-	cmdSwapPorts->setBaseColor(gui_baseCol);
+	cmdSwapPorts->setBaseColor(gui_base_color);
+	cmdSwapPorts->setForegroundColor(gui_foreground_color);
 	cmdSwapPorts->addActionListener(inputActionListener);
 
 	lblPort0mousemode = new gcn::Label("Mouse Map Port0:");
@@ -429,8 +440,10 @@ void InitPanelInput(const config_category& category)
 	lblAutofireRate->setAlignment(gcn::Graphics::RIGHT);
 	cboAutofireRate = new gcn::DropDown(&autoFireRateList);
 	cboAutofireRate->setSize(95, cboAutofireRate->getHeight());
-	cboAutofireRate->setBaseColor(gui_baseCol);
-	cboAutofireRate->setBackgroundColor(colTextboxBackground);
+	cboAutofireRate->setBaseColor(gui_base_color);
+	cboAutofireRate->setBackgroundColor(gui_textbox_background_color);
+	cboAutofireRate->setForegroundColor(gui_foreground_color);
+	cboAutofireRate->setSelectionColor(gui_selection_color);
 	cboAutofireRate->setId("cboAutofireRate");
 	cboAutofireRate->addActionListener(inputActionListener);
 
@@ -439,7 +452,9 @@ void InitPanelInput(const config_category& category)
 	lblDigitalJoyMouseSpeedInfo = new gcn::Label("100");
 	sldDigitalJoyMouseSpeed = new gcn::Slider(0, 4);
 	sldDigitalJoyMouseSpeed->setSize(100, SLIDER_HEIGHT);
-	sldDigitalJoyMouseSpeed->setBaseColor(gui_baseCol);
+	sldDigitalJoyMouseSpeed->setBaseColor(gui_base_color);
+	sldDigitalJoyMouseSpeed->setBackgroundColor(gui_textbox_background_color);
+	sldDigitalJoyMouseSpeed->setForegroundColor(gui_foreground_color);
 	sldDigitalJoyMouseSpeed->setMarkerLength(20);
 	sldDigitalJoyMouseSpeed->setStepLength(1);
 	sldDigitalJoyMouseSpeed->setId("sldDigitalJoyMouseSpeed");
@@ -450,7 +465,9 @@ void InitPanelInput(const config_category& category)
 	lblAnalogJoyMouseSpeedInfo = new gcn::Label("100");
 	sldAnalogJoyMouseSpeed = new gcn::Slider(0, 13);
 	sldAnalogJoyMouseSpeed->setSize(100, SLIDER_HEIGHT);
-	sldAnalogJoyMouseSpeed->setBaseColor(gui_baseCol);
+	sldAnalogJoyMouseSpeed->setBaseColor(gui_base_color);
+	sldAnalogJoyMouseSpeed->setBackgroundColor(gui_textbox_background_color);
+	sldAnalogJoyMouseSpeed->setForegroundColor(gui_foreground_color);
 	sldAnalogJoyMouseSpeed->setMarkerLength(20);
 	sldAnalogJoyMouseSpeed->setStepLength(1);
 	sldAnalogJoyMouseSpeed->setId("sldAnalogJoyMouseSpeed");
@@ -461,7 +478,9 @@ void InitPanelInput(const config_category& category)
 	lblMouseSpeedInfo = new gcn::Label("100");
 	sldMouseSpeed = new gcn::Slider(0, 13);
 	sldMouseSpeed->setSize(100, SLIDER_HEIGHT);
-	sldMouseSpeed->setBaseColor(gui_baseCol);
+	sldMouseSpeed->setBaseColor(gui_base_color);
+	sldMouseSpeed->setBackgroundColor(gui_textbox_background_color);
+	sldMouseSpeed->setForegroundColor(gui_foreground_color);
 	sldMouseSpeed->setMarkerLength(20);
 	sldMouseSpeed->setStepLength(1);
 	sldMouseSpeed->setId("sldMouseSpeed");
@@ -469,24 +488,42 @@ void InitPanelInput(const config_category& category)
 	
 	chkMouseHack = new gcn::CheckBox("Virtual mouse driver");
 	chkMouseHack->setId("chkMouseHack");
+	chkMouseHack->setBaseColor(gui_base_color);
+	chkMouseHack->setBackgroundColor(gui_textbox_background_color);
+	chkMouseHack->setForegroundColor(gui_foreground_color);
 	chkMouseHack->addActionListener(inputActionListener);
 
 	chkMagicMouseUntrap = new gcn::CheckBox("Magic Mouse untrap");
 	chkMagicMouseUntrap->setId("chkMagicMouseUntrap");
+	chkMagicMouseUntrap->setBaseColor(gui_base_color);
+	chkMagicMouseUntrap->setBackgroundColor(gui_textbox_background_color);
+	chkMagicMouseUntrap->setForegroundColor(gui_foreground_color);
 	chkMagicMouseUntrap->addActionListener(inputActionListener);
 
 	optBoth = new gcn::RadioButton("Both", "radioCursorGroup");
 	optBoth->setId("optBoth");
+	optBoth->setBaseColor(gui_base_color);
+	optBoth->setBackgroundColor(gui_textbox_background_color);
+	optBoth->setForegroundColor(gui_foreground_color);
 	optBoth->addActionListener(inputActionListener);
 	optNative = new gcn::RadioButton("Native only", "radioCursorGroup");
 	optNative->setId("optNative");
+	optNative->setBaseColor(gui_base_color);
+	optNative->setBackgroundColor(gui_textbox_background_color);
+	optNative->setForegroundColor(gui_foreground_color);
 	optNative->addActionListener(inputActionListener);
 	optHost = new gcn::RadioButton("Host only", "radioCursorGroup");
 	optHost->setId("optHost");
+	optHost->setBaseColor(gui_base_color);
+	optHost->setBackgroundColor(gui_textbox_background_color);
+	optHost->setForegroundColor(gui_foreground_color);
 	optHost->addActionListener(inputActionListener);
 	
 	chkInputAutoswitch = new gcn::CheckBox("Mouse/Joystick autoswitching");
 	chkInputAutoswitch->setId("chkInputAutoswitch");
+	chkInputAutoswitch->setBaseColor(gui_base_color);
+	chkInputAutoswitch->setBackgroundColor(gui_textbox_background_color);
+	chkInputAutoswitch->setForegroundColor(gui_foreground_color);
 	chkInputAutoswitch->addActionListener(inputActionListener);
 
 	int posY = DISTANCE_BORDER;
@@ -670,29 +707,19 @@ void RefreshPanelInput()
 		cboAutofireRate->setSelected(3);
 
 	// changed mouse map
-	joysmm[0]->setSelected(changed_prefs.jports[0].mousemap);
-	joysmm[1]->setSelected(changed_prefs.jports[1].mousemap);
-
-	if (joysm[0]->getSelected() == 0)
-	{
-		joysmm[0]->setEnabled(false);
-		lblPort0mousemode->setEnabled(false);
-	}
-	else
-	{
-		joysmm[0]->setEnabled(true);
-		lblPort0mousemode->setEnabled(true);
+	for (int i = 0; i < 2; ++i) {
+		joysmm[i]->setSelected(changed_prefs.jports[i].mousemap);
 	}
 
-	if (joysm[1]->getSelected() == 0)
-	{
-		joysmm[1]->setEnabled(false);
-		lblPort1mousemode->setEnabled(false);
-	}
-	else
-	{
-		joysmm[1]->setEnabled(true);
-		lblPort1mousemode->setEnabled(true);
+	for (int i = 0; i < 2; i++) {
+		const bool is_enabled = joysm[i]->getSelected() != 0;
+		joysmm[i]->setEnabled(is_enabled);
+		if (i == 0) {
+			lblPort0mousemode->setEnabled(is_enabled);
+		}
+		else {
+			lblPort1mousemode->setEnabled(is_enabled);
+		}
 	}
 
 	for (auto i = 0; i < 5; ++i)
@@ -758,7 +785,7 @@ bool HelpPanelInput(std::vector<std::string>& helptext)
 	helptext.emplace_back(" ");
 	helptext.emplace_back("You can use the Swap Ports button to swap the devices between port 0 and 1.");
 	helptext.emplace_back("Auto-switching enables you to switch Port 0 between Mouse-Joystick based on");
-	helptext.emplace_back("which device is being used. Only works if type is left to Default.");
+	helptext.emplace_back("which device is being used.");
 	helptext.emplace_back(" ");
 	helptext.emplace_back("Mouse Map: This allows you to use the Left analog stick on your controller");
 	helptext.emplace_back("to emulate a mouse in Port 0, with the Shoulder buttons acting as Mouse buttons.");

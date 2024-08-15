@@ -3,6 +3,7 @@
 
 #include <guisan/sdl/sdlinput.hpp>
 #include "amiberry_gfx.h"
+#include "amiberry_input.h"
 #include "options.h"
 
 enum
@@ -26,8 +27,8 @@ enum
 
 static const std::vector<std::string> floppy_drive_types = {
 	"Disabled", "3.5\" DD", "3.5\" HD", "5.25\" (40)",
-	"5.25\" (80)", "3.5\" ESCOM", "DB: Fast", "DB: Compatible",
-	"DB: Turbo", "DB: Stalling"
+	"5.25\" (80)", "3.5\" ESCOM", "FB: Normal", "FB: Compatible",
+	"FB: Turbo", "FB: Stalling"
 };
 
 static const TCHAR* memsize_names[] = {
@@ -137,7 +138,7 @@ enum
 };
 
 static const char* diskfile_filter[] = {
-	".adf", ".adz", ".fdi", ".ipf", ".zip", ".dms", ".gz", ".xz", ".scp", ".zip",
+	".adf", ".adz", ".fdi", ".ipf", ".zip", ".dms", ".gz", ".xz", ".scp",
 	".7z", ".lha", ".lzh", ".lzx", "\0"
 };
 static const char* harddisk_filter[] = {".hdf", ".hdz", ".lha", "zip", ".vhd", ".chd", ".7z", "\0"};
@@ -145,10 +146,10 @@ static const char* cdfile_filter[] = {".cue", ".ccd", ".iso", ".mds", ".nrg", ".
 static const char* whdload_filter[] = {".lha", "\0"};
 static string drivebridgeModes[] =
 {
-	"Fast",
+	"Normal",
 	"Compatible",
 	"Turbo",
-	"Accurate"
+	"Stalling"
 };
 
 using ConfigCategory = struct config_category
@@ -171,10 +172,13 @@ extern gcn::Container* gui_top;
 
 // GUI Colors
 extern amiberry_gui_theme gui_theme;
-extern gcn::Color gui_baseCol;
-extern gcn::Color colTextboxBackground;
-extern gcn::Color colSelectorInactive;
-extern gcn::Color colSelectorActive;
+extern gcn::Color gui_base_color;
+extern gcn::Color gui_textbox_background_color;
+extern gcn::Color gui_selector_inactive_color;
+extern gcn::Color gui_selector_active_color;
+extern gcn::Color gui_selection_color;
+extern gcn::Color gui_foreground_color;
+extern gcn::Color gui_font_color;
 
 extern gcn::SDLInput* gui_input;
 extern SDL_Surface* gui_screen;
@@ -321,7 +325,6 @@ void RefreshPanelWHDLoad();
 bool HelpPanelWHDLoad(std::vector<std::string>& helptext);
 
 void refresh_all_panels();
-void register_refresh_func(void (*func)());
 void focus_bug_workaround(gcn::Window* wnd);
 void disable_resume();
 
@@ -331,6 +334,7 @@ amiberry_hotkey ShowMessageForInput(const char* title, const char* line1, const 
 
 std::string SelectFolder(const std::string& title, std::string value);
 std::string SelectFile(const std::string& title, std::string value, const char* filter[], bool create = false);
+bool Create_Folder(const std::string& path);
 
 bool EditFilesysVirtual(int unit_no);
 bool EditFilesysHardfile(int unit_no);
@@ -353,8 +357,14 @@ enum
 	DIRECTION_RIGHT
 };
 
-bool HandleNavigation(int direction);
+bool handle_navigation(int direction);
 void PushFakeKey(SDL_Keycode inKey);
+
+extern bool handle_keydown(SDL_Event& event, bool& dialog_finished, bool& nav_left, bool& nav_right);
+extern bool handle_joybutton(didata* did, bool& dialog_finished, bool& nav_left, bool& nav_right);
+extern bool handle_joyaxis(const SDL_Event& event, bool& nav_left, bool& nav_right);
+extern bool handle_finger(const SDL_Event& event, SDL_Event& touch_event);
+extern bool handle_mousewheel(const SDL_Event& event);
 
 enum
 {
@@ -370,9 +380,8 @@ STATIC_INLINE bool is_hdf_rdb()
 	return current_hfdlg.ci.sectors == 0 && current_hfdlg.ci.surfaces == 0 && current_hfdlg.ci.reserved == 0;
 }
 
-extern std::string whdload_filename;
 extern std::string screenshot_filename;
-extern int currentStateNum;
+extern int current_state_num;
 extern int delay_savestate_frame;
 extern int last_x;
 extern int last_y;
@@ -389,5 +398,8 @@ extern std::string get_full_path_from_disk_list(std::string element);
 extern amiberry_hotkey get_hotkey_from_config(std::string config_option);
 extern void save_mapping_to_file(const std::string& mapping);
 extern void clear_whdload_prefs();
+extern void create_startup_sequence();
+
+extern void SetLastActiveConfig(const char* filename);
 
 #endif // GUI_HANDLING_H

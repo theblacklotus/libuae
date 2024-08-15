@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstring>
 #include <cstdlib>
 #include <cstdio>
@@ -81,8 +82,8 @@ public:
 	void changeDir(const std::string& path)
 	{
 		read_directory(path, &dirs, &files);
-		if (dirs.empty())
-			dirs.emplace_back("..");
+		if (std::find(dirs.begin(), dirs.end(), "..") == dirs.end())
+			dirs.insert(dirs.begin(), "..");
 		FilterFiles(&files, filefilter);
 	}
 
@@ -93,42 +94,6 @@ public:
 };
 
 static SelectFileListModel* fileList;
-
-class FileButtonActionListener : public gcn::ActionListener
-{
-public:
-	void action(const gcn::ActionEvent& actionEvent) override
-	{
-		if (actionEvent.getSource() == cmdOK)
-		{
-			const auto selected_item = lstFiles->getSelected();
-			if (createNew)
-			{
-				if (txtFilename->getText().empty())
-					return;
-				std::string tmp = workingDir.append("/").append(txtFilename->getText());
-
-				if (tmp.find(filefilter[0]) == std::string::npos)
-					tmp = tmp.append(filefilter[0]);
-
-				if (my_existsfile2(tmp.c_str()) == 1)
-					return; // File already exists
-				workingDir = tmp;
-				dialogResult = true;
-			}
-			else
-			{
-				if (fileList->isDir(selected_item))
-					return; // Directory selected -> Ok not possible
-				workingDir = workingDir.append("/").append(fileList->getElementAt(selected_item));
-				dialogResult = true;
-			}
-		}
-		dialogFinished = true;
-	}
-};
-
-static FileButtonActionListener* fileButtonActionListener;
 
 static void checkfoldername(const std::string& current)
 {
@@ -164,6 +129,47 @@ static void checkfilename(std::string current)
 		}
 	}
 }
+
+class FileButtonActionListener : public gcn::ActionListener
+{
+public:
+	void action(const gcn::ActionEvent& actionEvent) override
+	{
+		if (actionEvent.getSource() == cmdOK)
+		{
+			const auto selected_item = lstFiles->getSelected();
+			if (createNew)
+			{
+				if (txtFilename->getText().empty())
+					return;
+				std::string tmp = workingDir.append("/").append(txtFilename->getText());
+
+				if (tmp.find(filefilter[0]) == std::string::npos)
+					tmp = tmp.append(filefilter[0]);
+
+				if (my_existsfile2(tmp.c_str()) == 1)
+					return; // File already exists
+				workingDir = tmp;
+				dialogResult = true;
+			}
+			else
+			{
+				if (fileList->isDir(selected_item))
+					return; // Directory selected -> Ok not possible
+				workingDir = workingDir.append("/").append(fileList->getElementAt(selected_item));
+				dialogResult = true;
+			}
+			dialogFinished = true;
+		}
+		else if (actionEvent.getSource() == cmdCancel)
+		{
+			dialogResult = false;
+			dialogFinished = true;
+		}
+	}
+};
+
+static FileButtonActionListener* fileButtonActionListener;
 
 class SelectFileActionListener : public gcn::ActionListener
 {
@@ -202,7 +208,8 @@ static void InitSelectFile(const std::string& title)
 	wndSelectFile = new gcn::Window("Load");
 	wndSelectFile->setSize(DIALOG_WIDTH, DIALOG_HEIGHT);
 	wndSelectFile->setPosition((GUI_WIDTH - DIALOG_WIDTH) / 2, (GUI_HEIGHT - DIALOG_HEIGHT) / 2);
-	wndSelectFile->setBaseColor(gui_baseCol);
+	wndSelectFile->setBaseColor(gui_base_color);
+	wndSelectFile->setForegroundColor(gui_foreground_color);
 	wndSelectFile->setCaption(title);
 	wndSelectFile->setTitleBarHeight(TITLEBAR_HEIGHT);
 
@@ -212,20 +219,24 @@ static void InitSelectFile(const std::string& title)
 	cmdOK->setSize(BUTTON_WIDTH, BUTTON_HEIGHT);
 	cmdOK->setPosition(DIALOG_WIDTH - DISTANCE_BORDER - 2 * BUTTON_WIDTH - DISTANCE_NEXT_X,
 					   DIALOG_HEIGHT - 2 * DISTANCE_BORDER - BUTTON_HEIGHT - 10);
-	cmdOK->setBaseColor(gui_baseCol);
+	cmdOK->setBaseColor(gui_base_color);
+	cmdOK->setForegroundColor(gui_foreground_color);
 	cmdOK->addActionListener(fileButtonActionListener);
 
 	cmdCancel = new gcn::Button("Cancel");
 	cmdCancel->setSize(BUTTON_WIDTH, BUTTON_HEIGHT);
 	cmdCancel->setPosition(DIALOG_WIDTH - DISTANCE_BORDER - BUTTON_WIDTH,
 						   DIALOG_HEIGHT - 2 * DISTANCE_BORDER - BUTTON_HEIGHT - 10);
-	cmdCancel->setBaseColor(gui_baseCol);
+	cmdCancel->setBaseColor(gui_base_color);
+	cmdCancel->setForegroundColor(gui_foreground_color);
 	cmdCancel->addActionListener(fileButtonActionListener);
 
 	txtCurrent = new gcn::TextField();
 	txtCurrent->setSize(DIALOG_WIDTH - 2 * DISTANCE_BORDER - 4, TEXTFIELD_HEIGHT);
 	txtCurrent->setPosition(DISTANCE_BORDER, 10);
-
+	txtCurrent->setBaseColor(gui_base_color);
+	txtCurrent->setBackgroundColor(gui_textbox_background_color);
+	txtCurrent->setForegroundColor(gui_foreground_color);
 	txtCurrent->setEnabled(true);
 	editFilePathActionListener =  new EditFilePathActionListener();
 	txtCurrent->addActionListener(editFilePathActionListener);
@@ -234,8 +245,11 @@ static void InitSelectFile(const std::string& title)
 	fileList = new SelectFileListModel(".");
 
 	lstFiles = new gcn::ListBox(fileList);
-	lstFiles->setSize(DIALOG_WIDTH - 40, DIALOG_HEIGHT - 108);
-	lstFiles->setBaseColor(gui_baseCol);
+	lstFiles->setSize(DIALOG_WIDTH - 45, DIALOG_HEIGHT - 108);
+	lstFiles->setBaseColor(gui_base_color);
+	lstFiles->setBackgroundColor(gui_textbox_background_color);
+	lstFiles->setForegroundColor(gui_foreground_color);
+	lstFiles->setSelectionColor(gui_selection_color);
 	lstFiles->setWrappingEnabled(true);
 	lstFiles->addActionListener(selectFileActionListener);
 
@@ -244,7 +258,12 @@ static void InitSelectFile(const std::string& title)
 	scrAreaFiles->setPosition(DISTANCE_BORDER, 10 + TEXTFIELD_HEIGHT + 10);
 	scrAreaFiles->setSize(DIALOG_WIDTH - 2 * DISTANCE_BORDER - 4, DIALOG_HEIGHT - 128);
 	scrAreaFiles->setScrollbarWidth(SCROLLBAR_WIDTH);
-	scrAreaFiles->setBaseColor(gui_baseCol);
+	scrAreaFiles->setBaseColor(gui_base_color);
+	scrAreaFiles->setBackgroundColor(gui_textbox_background_color);
+	scrAreaFiles->setForegroundColor(gui_foreground_color);
+	scrAreaFiles->setSelectionColor(gui_selection_color);
+	scrAreaFiles->setHorizontalScrollPolicy(gcn::ScrollArea::SHOW_AUTO);
+	scrAreaFiles->setVerticalScrollPolicy(gcn::ScrollArea::SHOW_ALWAYS);
 
 	if (createNew)
 	{
@@ -256,6 +275,9 @@ static void InitSelectFile(const std::string& title)
 		txtFilename = new gcn::TextField();
 		txtFilename->setSize(350, TEXTFIELD_HEIGHT);
 		txtFilename->setId("Filename");
+		txtFilename->setBaseColor(gui_base_color);
+		txtFilename->setBackgroundColor(gui_textbox_background_color);
+		txtFilename->setForegroundColor(gui_foreground_color);
 		txtFilename->setPosition(lblFilename->getX() + lblFilename->getWidth() + DISTANCE_NEXT_X, lblFilename->getY());
 
 		wndSelectFile->add(lblFilename);
@@ -345,232 +367,54 @@ static void SelectFileLoop()
 {
 	const AmigaMonitor* mon = &AMonitors[0];
 
-	auto got_event = 0;
+	bool got_event = false;
 	SDL_Event event;
 	SDL_Event touch_event;
-	didata* did = &di_joystick[0];
+	bool nav_left, nav_right;
 	while (SDL_PollEvent(&event))
 	{
+		nav_left = nav_right = false;
 		switch (event.type)
 		{
 		case SDL_KEYDOWN:
-			got_event = 1;
-			switch (event.key.keysym.sym)
-			{
-			case VK_ESCAPE:
-				dialogFinished = true;
-				break;
-
-			case VK_LEFT:
-				navigate_left();
-				break;
-
-			case VK_RIGHT:
-				navigate_right();
-				break;
-
-			case VK_Red:
-			case VK_Green:
-				event.key.keysym.sym = SDLK_RETURN;
-				gui_input->pushInput(event); // Fire key down
-				event.type = SDL_KEYUP; // and the key up
-				break;
-			case SDLK_PAGEDOWN:
-				for (auto z = 0; z < 10; ++z)
-				{
-					PushFakeKey(SDLK_DOWN);
-				}
-				break;
-			case SDLK_PAGEUP:
-				for (auto z = 0; z < 10; ++z)
-				{
-					PushFakeKey(SDLK_UP);
-				}
-				break;
-			default:
-				break;
-			}
+			got_event = handle_keydown(event, dialogFinished, nav_left, nav_right);
 			break;
 
 		case SDL_JOYBUTTONDOWN:
 		case SDL_JOYHATMOTION:
 			if (gui_joystick)
 			{
-				got_event = 1;
-				const int hat = SDL_JoystickGetHat(gui_joystick, 0);
-				
-				if (SDL_JoystickGetButton(gui_joystick, did->mapping.button[SDL_CONTROLLER_BUTTON_A]) ||
-					SDL_JoystickGetButton(gui_joystick, did->mapping.button[SDL_CONTROLLER_BUTTON_B]))
-				{
-					PushFakeKey(SDLK_RETURN);
-					break;
-				}
-				if (SDL_JoystickGetButton(gui_joystick, did->mapping.button[SDL_CONTROLLER_BUTTON_X]) ||
-					SDL_JoystickGetButton(gui_joystick, did->mapping.button[SDL_CONTROLLER_BUTTON_Y]) ||
-					SDL_JoystickGetButton(gui_joystick, did->mapping.button[SDL_CONTROLLER_BUTTON_START]))
-				{
-					dialogFinished = true;
-					break;
-				}
-				if (SDL_JoystickGetButton(gui_joystick, did->mapping.button[SDL_CONTROLLER_BUTTON_DPAD_LEFT]) || hat & SDL_HAT_LEFT)
-				{
-					navigate_left();
-					break;
-				}
-				if (SDL_JoystickGetButton(gui_joystick, did->mapping.button[SDL_CONTROLLER_BUTTON_DPAD_RIGHT]) || hat & SDL_HAT_RIGHT)
-				{
-					navigate_right();
-					break;
-				}
-				if (SDL_JoystickGetButton(gui_joystick, did->mapping.button[SDL_CONTROLLER_BUTTON_DPAD_UP]) || hat & SDL_HAT_UP)
-				{
-					PushFakeKey(SDLK_UP);
-					break;
-				}
-				if (SDL_JoystickGetButton(gui_joystick, did->mapping.button[SDL_CONTROLLER_BUTTON_DPAD_DOWN]) || hat & SDL_HAT_DOWN)
-				{
-					PushFakeKey(SDLK_DOWN);
-					break;
-				}
-				if ((did->mapping.is_retroarch || !did->is_controller)
-					&& SDL_JoystickGetButton(gui_joystick, did->mapping.button[SDL_CONTROLLER_BUTTON_LEFTSHOULDER])
-					|| SDL_GameControllerGetButton(did->controller,
-						static_cast<SDL_GameControllerButton>(did->mapping.button[SDL_CONTROLLER_BUTTON_LEFTSHOULDER])))
-				{
-					for (auto z = 0; z < 10; ++z)
-					{
-						PushFakeKey(SDLK_UP);
-					}
-				}
-				if ((did->mapping.is_retroarch || !did->is_controller)
-					&& SDL_JoystickGetButton(gui_joystick, did->mapping.button[SDL_CONTROLLER_BUTTON_RIGHTSHOULDER])
-					|| SDL_GameControllerGetButton(did->controller,
-						static_cast<SDL_GameControllerButton>(did->mapping.button[SDL_CONTROLLER_BUTTON_RIGHTSHOULDER])))
-				{
-					for (auto z = 0; z < 10; ++z)
-					{
-						PushFakeKey(SDLK_DOWN);
-					}
-				}
+				got_event = handle_joybutton(&di_joystick[0], dialogFinished, nav_left, nav_right);
 			}
 			break;
 
 		case SDL_JOYAXISMOTION:
 			if (gui_joystick)
 			{
-				got_event = 1;
-				if (event.jaxis.axis == SDL_CONTROLLER_AXIS_LEFTX)
-				{
-					if (event.jaxis.value > joystick_dead_zone && last_x != 1)
-					{
-						last_x = 1;
-						navigate_right();
-						break;
-					}
-					if (event.jaxis.value < -joystick_dead_zone && last_x != -1)
-					{
-						last_x = -1;
-						navigate_left();
-						break;
-					}
-					if (event.jaxis.value > -joystick_dead_zone && event.jaxis.value < joystick_dead_zone)
-						last_x = 0;
-				}
-				else if (event.jaxis.axis == SDL_CONTROLLER_AXIS_LEFTY)
-				{
-					if (event.jaxis.value < -joystick_dead_zone && last_y != -1)
-					{
-						last_y = -1;
-						PushFakeKey(SDLK_UP);
-						break;
-					}
-					if (event.jaxis.value > joystick_dead_zone && last_y != 1)
-					{
-						last_y = 1;
-						PushFakeKey(SDLK_DOWN);
-						break;
-					}
-					if (event.jaxis.value > -joystick_dead_zone && event.jaxis.value < joystick_dead_zone)
-						last_y = 0;
-				}
+				got_event = handle_joyaxis(event, nav_left, nav_right);
 			}
 			break;
 	
 		case SDL_FINGERDOWN:
-			got_event = 1;
-			memcpy(&touch_event, &event, sizeof event);
-			touch_event.type = SDL_MOUSEBUTTONDOWN;
-			touch_event.button.which = 0;
-			touch_event.button.button = SDL_BUTTON_LEFT;
-			touch_event.button.state = SDL_PRESSED;
-
-			touch_event.button.x = gui_graphics->getTarget()->w * int(event.tfinger.x);
-			touch_event.button.y = gui_graphics->getTarget()->h * int(event.tfinger.y);
-
-			gui_input->pushInput(touch_event);
-			break;
-
 		case SDL_FINGERUP:
-			got_event = 1;
-			memcpy(&touch_event, &event, sizeof event);
-			touch_event.type = SDL_MOUSEBUTTONUP;
-			touch_event.button.which = 0;
-			touch_event.button.button = SDL_BUTTON_LEFT;
-			touch_event.button.state = SDL_RELEASED;
-
-			touch_event.button.x = gui_graphics->getTarget()->w * int(event.tfinger.x);
-			touch_event.button.y = gui_graphics->getTarget()->h * int(event.tfinger.y);
-
-			gui_input->pushInput(touch_event);
-			break;
-
 		case SDL_FINGERMOTION:
-			got_event = 1;
-			memcpy(&touch_event, &event, sizeof event);
-			touch_event.type = SDL_MOUSEMOTION;
-			touch_event.motion.which = 0;
-			touch_event.motion.state = 0;
-
-			touch_event.motion.x = gui_graphics->getTarget()->w * int(event.tfinger.x);
-			touch_event.motion.y = gui_graphics->getTarget()->h * int(event.tfinger.y);
-
+			got_event = handle_finger(event, touch_event);
 			gui_input->pushInput(touch_event);
 			break;
 
 		case SDL_MOUSEWHEEL:
-			got_event = 1;
-			if (event.wheel.y > 0)
-			{
-				for (auto z = 0; z < event.wheel.y; ++z)
-				{
-					PushFakeKey(SDLK_UP);
-				}
-			}
-			else if (event.wheel.y < 0)
-			{
-				for (auto z = 0; z > event.wheel.y; --z)
-				{
-					PushFakeKey(SDLK_DOWN);
-				}
-			}
-			break;
-
-		case SDL_KEYUP:
-		case SDL_JOYBUTTONUP:
-		case SDL_MOUSEBUTTONDOWN:
-		case SDL_MOUSEBUTTONUP:
-		case SDL_MOUSEMOTION:
-		case SDL_RENDER_TARGETS_RESET:
-		case SDL_RENDER_DEVICE_RESET:
-		case SDL_WINDOWEVENT:
-		case SDL_DISPLAYEVENT:
-		case SDL_SYSWMEVENT:
-			got_event = 1;
+			got_event = handle_mousewheel(event);
 			break;
 
 		default:
+			got_event = true;
 			break;
 		}
+
+		if (nav_left)
+			navigate_left();
+		else if (nav_right)
+			navigate_right();
 
 		//-------------------------------------------------
 		// Send event to guisan-controls
@@ -582,9 +426,7 @@ static void SelectFileLoop()
 	{
 		// Now we let the Gui object perform its logic.
 		uae_gui->logic();
-
 		SDL_RenderClear(mon->gui_renderer);
-
 		// Now we let the Gui object draw itself.
 		uae_gui->draw();
 		// Finally we update the screen.
@@ -632,6 +474,8 @@ std::string SelectFile(const std::string& title, std::string value, const char* 
 
 	if (dialogResult)
 		value = workingDir;
+	else 		
+		value = "";
 
 	return value;
 }

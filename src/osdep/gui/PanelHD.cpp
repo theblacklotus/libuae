@@ -239,24 +239,28 @@ public:
 		}
 		else if (actionEvent.getSource() == cmdCDSelectFile)
 		{
+			//---------------------------------------
+			// Insert CD into drive
+			//---------------------------------------
 			std::string tmp;
 			if (strlen(changed_prefs.cdslots[0].name) > 0)
 				tmp = std::string(changed_prefs.cdslots[0].name);
 			else
-				tmp = current_dir;
+				tmp = get_cdrom_path();
 
 			tmp = SelectFile("Select CD image file", tmp, cdfile_filter);
+			if (!tmp.empty())
 			{
 				if (strncmp(changed_prefs.cdslots[0].name, tmp.c_str(), MAX_DPATH) != 0)
 				{
-					strncpy(changed_prefs.cdslots[0].name, tmp.c_str(), sizeof changed_prefs.cdslots[0].name);
+					strncpy(changed_prefs.cdslots[0].name, tmp.c_str(), MAX_DPATH);
 					changed_prefs.cdslots[0].inuse = true;
 					changed_prefs.cdslots[0].type = SCSI_UNIT_DEFAULT;
 					add_file_to_mru_list(lstMRUCDList, tmp);
-					current_dir = extract_path(tmp);
 
 					RefreshCDListModel();
 					AdjustDropDownControls();
+					SetLastActiveConfig(tmp.c_str());
 				}
 			}
 			cmdCDSelectFile->requestFocus();
@@ -291,8 +295,7 @@ public:
 				const auto element = get_full_path_from_disk_list(cdfileList.getElementAt(idx));
 				if (element != changed_prefs.cdslots[0].name)
 				{
-					strncpy(changed_prefs.cdslots[0].name, element.c_str(),
-					        sizeof changed_prefs.cdslots[0].name);
+					strncpy(changed_prefs.cdslots[0].name, element.c_str(), MAX_DPATH);
 					DISK_history_add (changed_prefs.cdslots[0].name, -1, HISTORY_CD, 0);
 					changed_prefs.cdslots[0].inuse = true;
 					changed_prefs.cdslots[0].type = SCSI_UNIT_DEFAULT;
@@ -302,6 +305,7 @@ public:
 					bIgnoreListChange = true;
 					cboCDFile->setSelected(0);
 					bIgnoreListChange = false;
+					SetLastActiveConfig(element.c_str());
 				}
 			}
 		}
@@ -330,18 +334,22 @@ void InitPanelHD(const config_category& category)
 	{
 		listEntry[row] = new gcn::Container();
 		listEntry[row]->setSize(category.panel->getWidth() - 2 * DISTANCE_BORDER, SMALL_BUTTON_HEIGHT + 4);
-		listEntry[row]->setBaseColor(gui_baseCol);
+		listEntry[row]->setBaseColor(gui_base_color);
+		listEntry[row]->setBackgroundColor(gui_textbox_background_color);
+		listEntry[row]->setForegroundColor(gui_foreground_color);
 		listEntry[row]->setBorderSize(0);
 
 		listCmdProps[row] = new gcn::Button("...");
-		listCmdProps[row]->setBaseColor(gui_baseCol);
+		listCmdProps[row]->setBaseColor(gui_base_color);
+		listCmdProps[row]->setForegroundColor(gui_foreground_color);
 		listCmdProps[row]->setSize(SMALL_BUTTON_WIDTH, SMALL_BUTTON_HEIGHT);
 		id_string = "cmdProp" + to_string(row);
 		listCmdProps[row]->setId(id_string);
 		listCmdProps[row]->addActionListener(hdEditActionListener);
 
 		listCmdDelete[row] = new gcn::ImageButton(prefix_with_data_path("delete.png"));
-		listCmdDelete[row]->setBaseColor(gui_baseCol);
+		listCmdDelete[row]->setBaseColor(gui_base_color);
+		listCmdDelete[row]->setForegroundColor(gui_foreground_color);
 		listCmdDelete[row]->setSize(SMALL_BUTTON_HEIGHT, SMALL_BUTTON_HEIGHT);
 		id_string = "cmdDel" + to_string(row);
 		listCmdDelete[row]->setId(id_string);
@@ -352,30 +360,36 @@ void InitPanelHD(const config_category& category)
 			listCells[row][col] = new gcn::TextField();
 			listCells[row][col]->setSize(COLUMN_SIZE[col], SMALL_BUTTON_HEIGHT);
 			listCells[row][col]->setEnabled(false);
-			listCells[row][col]->setBackgroundColor(colTextboxBackground);
+			listCells[row][col]->setBaseColor(gui_base_color);
+			listCells[row][col]->setBackgroundColor(gui_textbox_background_color);
+			listCells[row][col]->setForegroundColor(gui_foreground_color);
 		}
 	}
 
 	cmdAddDirectory = new gcn::Button("Add Directory");
-	cmdAddDirectory->setBaseColor(gui_baseCol);
+	cmdAddDirectory->setBaseColor(gui_base_color);
+	cmdAddDirectory->setForegroundColor(gui_foreground_color);
 	cmdAddDirectory->setSize(cmdAddDirectory->getWidth() + 30, BUTTON_HEIGHT);
 	cmdAddDirectory->setId("cmdAddDir");
 	cmdAddDirectory->addActionListener(hdAddActionListener);
 
 	cmdAddHardfile = new gcn::Button("Add Hardfile");
-	cmdAddHardfile->setBaseColor(gui_baseCol);
+	cmdAddHardfile->setBaseColor(gui_base_color);
+	cmdAddHardfile->setForegroundColor(gui_foreground_color);
 	cmdAddHardfile->setSize(cmdAddHardfile->getWidth() + 30, BUTTON_HEIGHT);
 	cmdAddHardfile->setId("cmdAddHDF");
 	cmdAddHardfile->addActionListener(hdAddActionListener);
 
 	cmdAddHardDrive = new gcn::Button("Add Hard Drive");
-	cmdAddHardDrive->setBaseColor(gui_baseCol);
+	cmdAddHardDrive->setBaseColor(gui_base_color);
+	cmdAddHardDrive->setForegroundColor(gui_foreground_color);
 	cmdAddHardDrive->setSize(cmdAddHardDrive->getWidth() + 30, BUTTON_HEIGHT);
 	cmdAddHardDrive->setId("cmdAddHardDrive");
 	cmdAddHardDrive->addActionListener(hdAddActionListener);
 
 	cmdCreateHardfile = new gcn::Button("Create Hardfile");
-	cmdCreateHardfile->setBaseColor(gui_baseCol);
+	cmdCreateHardfile->setBaseColor(gui_base_color);
+	cmdCreateHardfile->setForegroundColor(gui_foreground_color);
 	cmdCreateHardfile->setSize(cmdAddDirectory->getWidth(), BUTTON_HEIGHT);
 	cmdCreateHardfile->setId("cmdCreateHDF");
 	cmdCreateHardfile->addActionListener(hdAddActionListener);
@@ -386,28 +400,38 @@ void InitPanelHD(const config_category& category)
 
 	chkCD = new gcn::CheckBox("CD drive/image");
 	chkCD->setId("chkCD");
+	chkCD->setBaseColor(gui_base_color);
+	chkCD->setBackgroundColor(gui_textbox_background_color);
+	chkCD->setForegroundColor(gui_foreground_color);
 	chkCD->addActionListener(cdCheckActionListener);
 
 	chkCDTurbo = new gcn::CheckBox("CDTV/CDTV-CR/CD32 turbo CD read speed");
 	chkCDTurbo->setId("chkCDTurbo");
+	chkCDTurbo->setBaseColor(gui_base_color);
+	chkCDTurbo->setBackgroundColor(gui_textbox_background_color);
+	chkCDTurbo->setForegroundColor(gui_foreground_color);
 	chkCDTurbo->addActionListener(cdCheckActionListener);
 
 	cmdCDEject = new gcn::Button("Eject");
 	cmdCDEject->setSize(SMALL_BUTTON_WIDTH * 2, SMALL_BUTTON_HEIGHT);
-	cmdCDEject->setBaseColor(gui_baseCol);
+	cmdCDEject->setBaseColor(gui_base_color);
+	cmdCDEject->setForegroundColor(gui_foreground_color);
 	cmdCDEject->setId("cmdCDEject");
 	cmdCDEject->addActionListener(cdButtonActionListener);
 
 	cmdCDSelectFile = new gcn::Button("Select Image");
 	cmdCDSelectFile->setSize(SMALL_BUTTON_WIDTH * 4, SMALL_BUTTON_HEIGHT);
-	cmdCDSelectFile->setBaseColor(gui_baseCol);
+	cmdCDSelectFile->setBaseColor(gui_base_color);
+	cmdCDSelectFile->setForegroundColor(gui_foreground_color);
 	cmdCDSelectFile->setId("cmdCDSelectFile");
 	cmdCDSelectFile->addActionListener(cdButtonActionListener);
 
 	cboCDFile = new gcn::DropDown(&cdfileList);
 	cboCDFile->setSize(category.panel->getWidth() - 2 * DISTANCE_BORDER, cboCDFile->getHeight());
-	cboCDFile->setBaseColor(gui_baseCol);
-	cboCDFile->setBackgroundColor(colTextboxBackground);
+	cboCDFile->setBaseColor(gui_base_color);
+	cboCDFile->setBackgroundColor(gui_textbox_background_color);
+	cboCDFile->setForegroundColor(gui_foreground_color);
+	cboCDFile->setSelectionColor(gui_selection_color);
 	cboCDFile->setId("cboCD");
 	cboCDFile->addActionListener(cdFileActionListener);
 

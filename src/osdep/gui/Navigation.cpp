@@ -1,20 +1,23 @@
 #include <guisan.hpp>
 #include <guisan/sdl.hpp>
+
+#include "config.h"
 #include "SelectorEntry.hpp"
 #include "sysdeps.h"
 #include "gui_handling.h"
+#include "amiberry_input.h"
 
 typedef struct
 {
-	std::string activeWidget;
-	std::string leftWidget;
-	std::string rightWidget;
-	std::string upWidget;
-	std::string downWidget;
+	std::string active_widget;
+	std::string left_widget;
+	std::string right_widget;
+	std::string up_widget;
+	std::string down_widget;
 } NavigationMap;
 
 
-static NavigationMap navMap[] =
+static NavigationMap nav_map[] =
 {
 	//  active              move left         move right        move up             move down
 	// main_window
@@ -41,7 +44,7 @@ static NavigationMap navMap[] =
 	{"Priority", "cboInactiveRunAtPrio", "cboActiveRunAtPrio", "Miscellaneous", "Savestates" },
 	{"Savestates", "State0", "State0", "Priority", "Virtual Keyboard"},
 	{"Virtual Keyboard", "chkVkEnabled", "chkVkEnabled", "Savestates", "WHDLoad"},
-	{"WHDLoad", "", "", "Virtual Keyboard", "Quit"},
+	{"WHDLoad", "cmdWhdloadEject", "cmdWhdloadEject", "Virtual Keyboard", "Quit"},
 	{"Shutdown", "Start", "Quit", "WHDLoad", "About"},
 	{"Quit", "Shutdown", "Restart", "WHDLoad", "About"},
 	{"Restart", "Quit", "Help", "WHDLoad", "About"},
@@ -50,16 +53,21 @@ static NavigationMap navMap[] =
 	{"Start", "Reset", "Shutdown", "WHDLoad", "About"},
 
 	// PanelPaths
-	{"cmdSystemROMs", "Paths", "Paths", "cmdRescanROMs", "cmdConfigPath"},
-	{"cmdConfigPath", "Paths", "Paths", "cmdSystemROMs", "cmdNvramFiles"},
-	{"cmdNvramFiles", "Paths", "Paths", "cmdConfigPath", "cmdScreenshotFiles"},
-	{"cmdScreenshotFiles", "Paths", "Paths", "cmdNvramFiles", "cmdStateFiles"},
-	{"cmdStateFiles", "Paths", "Paths", "cmdScreenshotFiles", "cmdControllersPath"},
-	{"cmdControllersPath", "Paths", "Paths", "cmdStateFiles", "cmdRetroArchFile"},
-	{"cmdRetroArchFile", "Paths", "Paths", "cmdControllersPath", "cmdWHDBootPath"},
-	{"cmdWHDBootPath", "Paths", "Paths", "cmdRetroArchFile", "cmdWHDLoadArchPath"},
-	{"cmdWHDLoadArchPath", "Paths", "Paths", "cmdWHDBootPath", "chkEnableLogging"},
-	{"chkEnableLogging", "Paths", "Paths", "cmdWHDLoadArchPath", "cmdLogfilePath"},
+	{"scrlPaths", "cmdSystemROMs", "Paths", "", "" },
+	{"cmdSystemROMs", "Paths", "scrlPaths", "cmdRescanROMs", "cmdConfigPath"},
+	{"cmdConfigPath", "Paths", "scrlPaths", "cmdSystemROMs", "cmdNvramFiles"},
+	{"cmdNvramFiles", "Paths", "scrlPaths", "cmdConfigPath", "cmdNvramFiles"},
+	{"cmdPluginsFiles", "Paths", "scrlPaths", "cmdNvramFiles", "cmdScreenshotFiles"},
+	{"cmdScreenshotFiles", "Paths", "scrlPaths", "cmdPluginsFiles", "cmdStateFiles"},
+	{"cmdStateFiles", "Paths", "scrlPaths", "cmdScreenshotFiles", "cmdControllersPath"},
+	{"cmdControllersPath", "Paths", "scrlPaths", "cmdStateFiles", "cmdRetroArchFile"},
+	{"cmdRetroArchFile", "Paths", "scrlPaths", "cmdControllersPath", "cmdWHDBootPath"},
+	{"cmdWHDBootPath", "Paths", "scrlPaths", "cmdRetroArchFile", "cmdWHDLoadArchPath"},
+	{"cmdWHDLoadArchPath", "Paths", "scrlPaths", "cmdWHDBootPath", "cmdFloppyPath"},
+	{"cmdFloppyPath", "Paths", "scrlPaths", "cmdWHDLoadArchPath", "cmdCDPath"},
+	{"cmdCDPath", "Paths", "scrlPaths", "cmdFloppyPath", "cmdHardDrivesPath"},
+	{"cmdHardDrivesPath", "Paths", "scrlPaths", "cmdCDPath", "chkEnableLogging"},
+	{"chkEnableLogging", "Paths", "Paths", "cmdHardDrivesPath", "cmdLogfilePath"},
 	{"cmdLogfilePath", "Paths", "Paths", "chkEnableLogging", "cmdRescanROMs"},
 	{"cmdRescanROMs", "Paths", "cmdDownloadXML", "cmdLogfilePath", "cmdSystemROMs"},
 	{"cmdDownloadXML", "cmdRescanROMs", "cmdDownloadCtrlDb", "cmdLogfilePath", "cmdSystemROMs"},
@@ -67,7 +75,7 @@ static NavigationMap navMap[] =
 
 	//  active            move left         move right        move up           move down
 	// PanelQuickstart
-	{"cboAModel", "Quickstart", "qsNTSC", "cboWhdload", "cboAConfig"},
+	{"cboAModel", "Quickstart", "qsNTSC", "cboQsWhdload", "cboAConfig"},
 	{"qsNTSC", "cboAModel", "Quickstart", "qsMode", "cboAConfig"},
 	{"cboAConfig", "Quickstart", "Quickstart", "cboAModel", "qscmdSel0"},
 	{"qsDF0", "Quickstart", "cboqsType0", "cboAConfig", "cboqsDisk0"},
@@ -89,10 +97,10 @@ static NavigationMap navMap[] =
 	{"qsCDSelect", "qscdEject", "Quickstart", "cboqsDisk1", "cboCD"},
 	{"cboCD", "Quickstart", "Quickstart", "qsCDSelect", "qsMode"},
 	{"qsMode", "Quickstart", "Quickstart", "cboCD", "cmdSetConfig"},
-	{"cmdSetConfig", "Quickstart", "Quickstart", "qsMode", "cmdWhdloadEject"},
-	{"cmdWhdloadEject", "Quickstart", "cmdWhdloadSelect", "cmdSetConfig", "cboWhdload"},
-	{"cmdWhdloadSelect", "cmdWhdloadEject", "Quickstart", "cmdSetConfig", "cboWhdload"},
-	{"cboWhdload", "Quickstart", "Quickstart", "cmdWhdloadEject", "cboAModel"},
+	{"cmdSetConfig", "Quickstart", "Quickstart", "qsMode", "cmdQsWhdloadEject"},
+	{"cmdQsWhdloadEject", "Quickstart", "cmdQsWhdloadSelect", "cmdSetConfig", "cboQsWhdload"},
+	{"cmdQsWhdloadSelect", "cmdQsWhdloadEject", "Quickstart", "cmdSetConfig", "cboQsWhdload"},
+	{"cboQsWhdload", "Quickstart", "Quickstart", "cmdQsWhdloadEject", "cboAModel"},
 
 	// PanelConfig
 	{"ConfigList", "Configurations", "ConfigLoad", "", ""},
@@ -175,20 +183,19 @@ static NavigationMap navMap[] =
 	{ "sldMbResHighmem", "", "", "sldMbResLowmem", "sldChipmem" },
 
 	// PanelFloppy
-	{ "DF0:", "Floppy drives", "cboType0", "cmdSaveForDisk", "cboDisk0" },
-	{ "cboType0", "DF0:", "chkWP0", "cmdSaveForDisk", "cboDisk0" },
-	{ "chkWP0", "cboType0", "cmdInfo0", "cmdSaveForDisk", "cboDisk0" },
-	{ "cmdInfo0", "chkWP0", "cmdEject0", "cmdSaveForDisk", "cboDisk0" },
-	{ "cmdEject0", "chkWP0", "cmdSel0", "cmdCreateHDDisk", "cboDisk0" },
+	{ "DF0:", "Floppy drives", "cboType0", "cmdCreateDDDisk", "cboDisk0" },
+	{ "cboType0", "DF0:", "chkWP0", "cmdCreateDDDisk", "cboDisk0" },
+	{ "chkWP0", "cboType0", "cmdInfo0", "cmdCreateDDDisk", "cboDisk0" },
+	{ "cmdInfo0", "chkWP0", "cmdEject0", "cmdCreateDDDisk", "cboDisk0" },
+	{ "cmdEject0", "cmdInfo0", "cmdSel0", "cmdCreateHDDisk", "cboDisk0" },
 	{ "cmdSel0", "cmdEject0", "Floppy drives", "cmdCreateHDDisk", "cboDisk0" },
-	{ "cboDisk0", "Floppy drives", "Floppy drives", "DF0:", "chkLoadDiskCfg" },
-	{ "chkLoadDiskCfg", "Floppy drives", "Floppy drives", "cboDisk0", "DF1:" },
-	{ "DF1:", "Floppy drives", "cboType1", "chkLoadDiskCfg", "cboDisk1" },
-	{ "cboType1", "DF1:", "chkWP1", "chkLoadDiskCfg", "cboDisk1" },
-	{ "chkWP1", "cboType1", "cmdInfo1", "chkLoadDiskCfg", "cboDisk1" },
-	{ "cmdInfo1", "chkWP1", "cmdEject1", "chkLoadDiskCfg", "cboDisk1" },
-	{ "cmdEject1", "cmdInfo1", "cmdSel1", "chkLoadDiskCfg", "cboDisk1" },
-	{ "cmdSel1", "cmdEject1", "Floppy drives", "chkLoadDiskCfg", "cboDisk1" },
+	{ "cboDisk0", "Floppy drives", "Floppy drives", "DF0:", "DF1:" },
+	{ "DF1:", "Floppy drives", "cboType1", "cboDisk0", "cboDisk1" },
+	{ "cboType1", "DF1:", "chkWP1", "cboDisk0", "cboDisk1" },
+	{ "chkWP1", "cboType1", "cmdInfo1", "cboDisk0", "cboDisk1" },
+	{ "cmdInfo1", "chkWP1", "cmdEject1", "cboDisk0", "cboDisk1" },
+	{ "cmdEject1", "cmdInfo1", "cmdSel1", "cboDisk0", "cboDisk1" },
+	{ "cmdSel1", "cmdEject1", "Floppy drives", "cboDisk0", "cboDisk1" },
 	{ "cboDisk1", "Floppy drives", "Floppy drives", "DF1:", "DF2:" },
 	{ "DF2:", "Floppy drives", "cboType2", "cboDisk1", "cboDisk2" },
 	{ "cboType2", "DF2:", "chkWP2", "cboDisk1", "cboDisk2" },
@@ -206,14 +213,13 @@ static NavigationMap navMap[] =
 	{ "cboDisk3", "Floppy drives", "Floppy drives", "DF3:", "sldDriveSpeed" },
 	{ "sldDriveSpeed", "", "", "cboDisk3", "cboDBDriver" },
 	
-	{ "cboDBDriver", "Floppy drives", "", "sldDriveSpeed", "chkDBSmartSpeed" },
-	{ "chkDBSmartSpeed", "Floppy drives", "", "cboDBDriver", "chkDBAutoCache" },
-	{ "chkDBAutoCache", "Floppy drives", "", "chkDBSmartSpeed", "chkDBCableDriveB" },
-	{ "chkDBCableDriveB", "Floppy drives", "", "chkDBAutoCache", "cmdSaveForDisk"},
+	{ "cboDBDriver", "Floppy drives", "Floppy drives", "sldDriveSpeed", "chkDBSmartSpeed" },
+	{ "chkDBSmartSpeed", "Floppy drives", "Floppy drives", "cboDBDriver", "chkDBAutoCache" },
+	{ "chkDBAutoCache", "Floppy drives", "Floppy drives", "chkDBSmartSpeed", "chkDBCableDriveB" },
+	{ "chkDBCableDriveB", "Floppy drives", "Floppy drives", "chkDBAutoCache", "cmdCreateDDDisk"},
 
-	{ "cmdSaveForDisk", "Floppy drives", "cmdCreateDDDisk", "chkDBCableDriveB", "DF0:" },
-	{ "cmdCreateDDDisk", "cmdSaveForDisk", "cmdCreateHDDisk", "chkDBCableDriveB", "cboType0" },
-	{ "cmdCreateHDDisk", "cmdCreateDDDisk", "Floppy drives", "chkDBCableDriveB", "cmdEject0" },
+	{ "cmdCreateDDDisk", "Floppy drives", "cmdCreateHDDisk", "chkDBCableDriveB", "DF0:" },
+	{ "cmdCreateHDDisk", "cmdCreateDDDisk", "Floppy drives", "chkDBCableDriveB", "DF0:" },
 
 	//  active            move left           move right          move up           move down
 	// PanelHD
@@ -272,15 +278,17 @@ static NavigationMap navMap[] =
 	{ "chkManualCrop", "Display", "chkHorizontal", "cboScreenmode", "sldWidth" },
 	{ "sldWidth", "", "", "chkManualCrop", "sldHeight" },
 	{ "sldHeight", "", "", "sldWidth", "chkAutoCrop" },
-	{ "chkAutoCrop", "Display", "chkBorderless", "sldHeight", "sldHOffset" },
-	{ "chkBorderless", "chkAutoCrop", "chkVsync", "sldHeight", "sldHOffset" },
-	{ "chkVsync", "chkBorderless", "optSingle", "sldHeight", "sldHOffset" },
-	{ "sldHOffset", "", "", "chkAutoCrop", "sldVOffset" },
+	{ "chkAutoCrop", "Display", "chkBorderless", "sldHeight", "cboVSyncNative" },
+	{ "chkBorderless", "chkAutoCrop", "optSingle", "sldHeight", "cboVSyncNative" },
+	{ "cboVSyncNative", "Display", "optSingle", "chkAutoCrop", "cboVSyncRtg" },
+	{ "cboVSyncRtg", "Display", "optSingle", "cboVSyncNative", "sldHOffset" },
+	{ "sldHOffset", "", "", "cboVSyncRtg", "sldVOffset" },
 	{ "sldVOffset", "", "", "sldHOffset", "cboScalingMethod" },
 	{ "cboScalingMethod", "Display", "optScanlines", "sldVOffset", "cboResolution" },
-	{ "cboResolution", "Display", "optDouble2", "cboScalingMethod", "chkBlackerThanBlack" },
-	{ "chkBlackerThanBlack", "Display", "chkFilterLowRes", "cboResolution", "chkAspect" },
-	{ "chkFilterLowRes", "chkBlackerThanBlack", "optISingle", "cboResolution", "chkAspect" },
+	{ "cboResolution", "Display", "optDouble2", "cboScalingMethod", "cboResSwitch" },
+	{ "cboResSwitch", "Display", "optDouble2", "cboResolution", "chkBlackerThanBlack" },
+	{ "chkBlackerThanBlack", "Display", "chkFilterLowRes", "cboResSwitch", "chkAspect" },
+	{ "chkFilterLowRes", "chkBlackerThanBlack", "optISingle", "cboResSwitch", "chkAspect" },
 	{ "chkAspect", "Display", "optISingle", "chkBlackerThanBlack", "chkFlickerFixer" },
 	{ "chkFlickerFixer", "Display", "optIDouble", "chkAspect", "chkFrameskip" },
 	{ "chkFrameskip", "Display", "optIDouble2", "chkFlickerFixer", "sldBrightness" },
@@ -289,8 +297,8 @@ static NavigationMap navMap[] =
 
 	{ "chkHorizontal", "cboScreenmode", "", "optIDouble3", "chkVertical" },
 	{ "chkVertical", "cboScreenmode", "", "chkHorizontal", "optSingle" },
-	{ "optSingle", "chkVsync", "", "chkVertical", "optDouble" },
-	{ "optDouble", "chkVsync", "", "optSingle", "optScanlines" },
+	{ "optSingle", "chkBorderless", "", "chkVertical", "optDouble" },
+	{ "optDouble", "chkBorderless", "", "optSingle", "optScanlines" },
 	{ "optScanlines", "cboScalingMethod", "", "optDouble", "optDouble2" },
 	{ "optDouble2", "cboResolution", "", "optScanlines", "optDouble3" },
 	{ "optDouble3", "chkFilterLowRes", "", "optDouble2", "optISingle" },
@@ -368,10 +376,10 @@ static NavigationMap navMap[] =
 	{ "cboProtectionDongle", "IO Ports", "IO Ports", "chkMidiRoute", "cboSampler" },
 
 	// PanelCustom
-	{ "0: Mouse", "Custom controls", "1: Joystick", "", "None" },
-	{ "1: Joystick", "0: Mouse", "2: Parallel 1", "", "HotKey" },
-	{ "2: Parallel 1", "1: Joystick", "3: Parallel 2", "", "HotKey" },
-	{ "3: Parallel 2", "2: Parallel 1", "Custom controls", "", "cmdSetHotkey" },
+	{ "0: Mouse", "Custom controls", "1: Joystick", "cmdSaveMapping", "None" },
+	{ "1: Joystick", "0: Mouse", "2: Parallel 1", "cmdSaveMapping", "HotKey" },
+	{ "2: Parallel 1", "1: Joystick", "3: Parallel 2", "cmdSaveMapping", "HotKey" },
+	{ "3: Parallel 2", "2: Parallel 1", "Custom controls", "cmdSaveMapping", "cmdSetHotkey" },
 
 	{ "None", "Custom controls", "HotKey", "0: Mouse", "cboCustomButtonAction0" },
 	{ "HotKey", "None", "cmdSetHotkey", "1: Joystick", "cboCustomButtonAction0" },
@@ -433,7 +441,7 @@ static NavigationMap navMap[] =
 	{ "cboCustomButtonAction12", "cboCustomButtonAction5", "Custom controls", "cboCustomButtonAction11", "cboCustomButtonAction13" },
 	{ "cboCustomButtonAction13", "cboCustomButtonAction6", "Custom controls", "cboCustomButtonAction12", "cboCustomButtonAction14" },
 	{ "cboCustomButtonAction14", "cboCustomAxisAction0", "Custom controls", "cboCustomButtonAction13", "cboCustomAxisAction1" },
-
+	// Left column bottom
 	{ "cboCustomAxisAction0", "Custom controls", "cboCustomButtonAction14", "cboCustomButtonAction6", "cboCustomAxisAction1" },
 	{ "cboCustomAxisAction1", "Custom controls", "cboCustomAxisAction4", "cboCustomAxisAction0", "cboCustomAxisAction2" },
 	{ "cboCustomAxisAction2", "Custom controls", "cboCustomAxisAction5", "cboCustomAxisAction1", "cboCustomAxisAction3" },
@@ -442,6 +450,7 @@ static NavigationMap navMap[] =
 	{ "cboCustomAxisAction4", "cboCustomAxisAction1", "Custom controls", "cboCustomButtonAction14", "cboCustomAxisAction5" },
 	{ "cboCustomAxisAction5", "cboCustomAxisAction2", "Custom controls", "cboCustomAxisAction4", "cmdSetHotkey" },
 #endif
+	{ "cmdSaveMapping", "Custom controls", "Custom controls", "cboCustomAxisAction3", "0: Mouse" },
 
 	// PanelDiskSwapper
 	// active				move left			move right			move up			move down
@@ -573,6 +582,20 @@ static NavigationMap navMap[] =
 	{ "cmdVkSetHotkeyClear", "cmdVkSetHotkey", "Virtual Keyboard", "cboVkStyle", "chkRetroArchVkbd"},
 	{ "chkRetroArchVkbd", "Virtual Keyboard", "Virtual Keyboard", "cmdVkSetHotkey", "chkVkEnabled"},
 
+	// WHDLoad
+	{ "cmdWhdloadEject", "WHDLoad", "cmdWhdloadSelect", "chkQuitOnExit", "cboWhdload" },
+	{ "cmdWhdloadSelect", "cmdWhdloadEject", "WHDLoad", "chkQuitOnExit", "cboWhdload" },
+	{ "cboWhdload", "WHDLoad", "WHDLoad", "cmdWhdloadSelect", "cboSlaves" },
+
+	{ "cboSlaves", "WHDLoad", "WHDLoad", "cboWhdload", "cmdCustomFields" },
+
+	{ "cmdCustomFields", "WHDLoad", "WHDLoad", "cboSlaves", "chkButtonWait" },
+	{ "chkButtonWait", "WHDLoad", "WHDLoad", "cmdCustomFields", "chkShowSplash" },
+	{ "chkShowSplash", "WHDLoad", "WHDLoad", "chkButtonWait", "chkWriteCache" },
+
+	{ "chkWriteCache", "WHDLoad", "WHDLoad", "chkShowSplash", "chkQuitOnExit" },
+	{ "chkQuitOnExit", "WHDLoad", "WHDLoad", "chkWriteCache", "cmdWhdloadEject" },
+
 	//  active            move left         move right        move up           move down
 	// EditFilesysVirtual
 	{ "txtVirtDevice", "", "", "txtVirtPath", "txtVirtVolume" },
@@ -614,103 +637,104 @@ static NavigationMap navMap[] =
 };
 
 
-bool HandleNavigation(int direction)
+bool handle_navigation(const int direction)
 {
-	const gcn::FocusHandler* focusHdl = gui_top->_getFocusHandler();
-	gcn::Widget* focusTarget = nullptr;
+	const gcn::FocusHandler* focus_hdl = gui_top->_getFocusHandler();
+	gcn::Widget* focus_target = nullptr;
 
-	if (focusHdl != nullptr)
+	if (focus_hdl != nullptr)
 	{
-		gcn::Widget* activeWidget = focusHdl->getFocused();
+		gcn::Widget* active_widget = focus_hdl->getFocused();
 
-		if (activeWidget != nullptr && !activeWidget->getId().empty())
+		if (active_widget != nullptr)
 		{
-			std::string activeName = activeWidget->getId();
-			auto bFoundEnabled = false;
-			auto tries = 10;
-
-			while (!bFoundEnabled && tries > 0)
+			std::string active_name = active_widget->getId();
+			if (!active_name.empty())
 			{
-				std::string searchFor;
+				auto bFoundEnabled = false;
+				auto tries = 10;
 
-				for (auto i = 0; navMap[i].activeWidget != "END"; ++i)
+				while (!bFoundEnabled && tries > 0)
 				{
-					if (navMap[i].activeWidget == activeName)
+					std::string search_for;
+
+					for (auto i = 0; nav_map[i].active_widget != "END"; ++i)
 					{
-						switch (direction)
+						if (nav_map[i].active_widget == active_name)
 						{
-						case DIRECTION_LEFT:
-							if (activeWidget->getId().substr(0, 3) != "txt")
-								searchFor = navMap[i].leftWidget;
-							break;
-						case DIRECTION_RIGHT:
-							if (activeWidget->getId().substr(0, 3) != "txt")
-								searchFor = navMap[i].rightWidget;
-							break;
-						case DIRECTION_UP:
-							searchFor = navMap[i].upWidget;
-							break;
-						case DIRECTION_DOWN:
-							searchFor = navMap[i].downWidget;
-							break;
-						default:
-							break;
-						}
-						if (!searchFor.empty())
-						{
-							focusTarget = gui_top->findWidgetById(searchFor);
-							if (focusTarget != nullptr)
+							if (active_name.substr(0, 3) != "txt")
 							{
-								if (focusTarget->isEnabled() && focusTarget->isVisible())
-									bFoundEnabled = true;
+								switch (direction)
+								{
+								case DIRECTION_LEFT:
+									search_for = nav_map[i].left_widget;
+									break;
+								case DIRECTION_RIGHT:
+									search_for = nav_map[i].right_widget;
+									break;
+								case DIRECTION_UP:
+									search_for = nav_map[i].up_widget;
+									break;
+								case DIRECTION_DOWN:
+									search_for = nav_map[i].down_widget;
+									break;
+								default:
+									break;
+								}
+							}
+							if (!search_for.empty())
+							{
+								focus_target = gui_top->findWidgetById(search_for);
+								if (focus_target != nullptr)
+								{
+									if (focus_target->isEnabled() && focus_target->isVisible())
+										bFoundEnabled = true;
+									else
+										active_name = search_for;
+								}
 								else
-									activeName = searchFor;
+								{
+									bFoundEnabled = true;
+									break;
+								}
 							}
-							else
-							{
-								bFoundEnabled = true;
-								break;
-							}
+							break;
 						}
-						break;
+					}
+					if (search_for.empty())
+						bFoundEnabled = true; // No entry to navigate to -> exit loop
+					--tries;
+				}
+
+				if (active_name.substr(0, 4) == "scrl")
+				{
+					// Scroll area detected
+					auto* scrollarea = dynamic_cast<gcn::ScrollArea*>(active_widget);
+					if (direction == DIRECTION_UP)
+					{
+						const auto scroll = scrollarea->getVerticalScrollAmount();
+						scrollarea->setVerticalScrollAmount(scroll - 30);
+					}
+					else if (direction == DIRECTION_DOWN)
+					{
+						const auto scroll = scrollarea->getVerticalScrollAmount();
+						scrollarea->setVerticalScrollAmount(scroll + 30);
 					}
 				}
-				if (searchFor.empty())
-					bFoundEnabled = true; // No entry to navigate to -> exit loop
-				--tries;
-			}
 
-			if (activeWidget->getId().substr(0, 4) == "scrl")
-			{
-				// Scroll area detected
-				auto* scrollarea = dynamic_cast<gcn::ScrollArea*>(activeWidget);
-				if (direction == DIRECTION_UP)
+				if (focus_target != nullptr && active_name.substr(0, 3) == "cbo")
 				{
-					const auto scroll = scrollarea->getVerticalScrollAmount();
-					scrollarea->setVerticalScrollAmount(scroll - 30);
-				}
-				else if (direction == DIRECTION_DOWN)
-				{
-					const auto scroll = scrollarea->getVerticalScrollAmount();
-					scrollarea->setVerticalScrollAmount(scroll + 30);
-				}
-			}
-
-			if (focusTarget != nullptr)
-			{
-				if (activeWidget->getId().substr(0, 3) == "cbo")
-				{
-					auto* dropdown = dynamic_cast<gcn::DropDown*>(activeWidget);
-					if (dropdown->isDroppedDown() && (direction == DIRECTION_UP || direction == DIRECTION_DOWN))
-						focusTarget = nullptr; // Up/down navigates in list if dropped down
+					auto* dropdown = dynamic_cast<gcn::DropDown*>(active_widget);
+					if (dropdown && dropdown->isEnabled() && dropdown->isDroppedDown() && (direction == DIRECTION_UP || direction == DIRECTION_DOWN))
+						focus_target = nullptr; // Up/down navigates in list if dropped down
 				}
 			}
 		}
 	}
 
-	if (focusTarget != nullptr)
-		focusTarget->requestFocus();
-	return focusTarget != nullptr;
+	if (focus_target != nullptr)
+		focus_target->requestFocus();
+	return focus_target != nullptr;
 }
 
 void PushFakeKey(const SDL_Keycode inKey)
@@ -723,3 +747,207 @@ void PushFakeKey(const SDL_Keycode inKey)
 	event.type = SDL_KEYUP; 
 	gui_input->pushInput(event); // and the key up
 }
+
+bool handle_keydown(SDL_Event& event, bool& dialog_finished, bool& nav_left, bool& nav_right)
+{
+	const auto key = event.key.keysym.sym;
+
+	auto push_fake_key_multiple_times = [&](const SDL_Keycode key_code, const int times = 1) {
+		for (auto z = 0; z < times; ++z) {
+			PushFakeKey(key_code);
+		}
+		};
+
+	switch (key)
+	{
+	case VK_ESCAPE:
+		dialog_finished = true;
+		break;
+
+	case VK_LEFT:
+		push_fake_key_multiple_times(SDLK_LEFT);
+		nav_left = true;
+		break;
+
+	case VK_RIGHT:
+		push_fake_key_multiple_times(SDLK_RIGHT);
+		nav_right = true;
+		break;
+
+	case VK_Red:
+	case VK_Green:
+		event.key.keysym.sym = SDLK_RETURN;
+		gui_input->pushInput(event); // Fire key down
+		event.type = SDL_KEYUP; // and the key up
+		break;
+
+	case SDLK_PAGEDOWN:
+		push_fake_key_multiple_times(SDLK_DOWN, 10);
+		break;
+
+	case SDLK_PAGEUP:
+		push_fake_key_multiple_times(SDLK_UP, 10);
+		break;
+
+	default:
+		break;
+	}
+	return true;
+}
+
+bool handle_joybutton(didata* did, bool& dialog_finished, bool& nav_left, bool& nav_right)
+{
+	const int hat = SDL_JoystickGetHat(gui_joystick, 0);
+
+	if (SDL_JoystickGetButton(gui_joystick, did->mapping.button[SDL_CONTROLLER_BUTTON_A]) ||
+		SDL_JoystickGetButton(gui_joystick, did->mapping.button[SDL_CONTROLLER_BUTTON_B]))
+	{
+		PushFakeKey(SDLK_RETURN);
+		return true;
+	}
+	if (SDL_JoystickGetButton(gui_joystick, did->mapping.button[SDL_CONTROLLER_BUTTON_X]) ||
+		SDL_JoystickGetButton(gui_joystick, did->mapping.button[SDL_CONTROLLER_BUTTON_Y]) ||
+		SDL_JoystickGetButton(gui_joystick, did->mapping.button[SDL_CONTROLLER_BUTTON_START]))
+	{
+		dialog_finished = true;
+		return true;
+	}
+	if (SDL_JoystickGetButton(gui_joystick, did->mapping.button[SDL_CONTROLLER_BUTTON_DPAD_LEFT]) || hat & SDL_HAT_LEFT)
+	{
+		nav_left = true;
+		return true;
+	}
+	if (SDL_JoystickGetButton(gui_joystick, did->mapping.button[SDL_CONTROLLER_BUTTON_DPAD_RIGHT]) || hat & SDL_HAT_RIGHT)
+	{
+		nav_right = true;
+		return true;
+	}
+	if (SDL_JoystickGetButton(gui_joystick, did->mapping.button[SDL_CONTROLLER_BUTTON_DPAD_UP]) || hat & SDL_HAT_UP)
+	{
+		PushFakeKey(SDLK_UP);
+		return true;
+	}
+	if (SDL_JoystickGetButton(gui_joystick, did->mapping.button[SDL_CONTROLLER_BUTTON_DPAD_DOWN]) || hat & SDL_HAT_DOWN)
+	{
+		PushFakeKey(SDLK_DOWN);
+		return true;
+	}
+	if ((did->mapping.is_retroarch || !did->is_controller)
+		&& SDL_JoystickGetButton(gui_joystick, did->mapping.button[SDL_CONTROLLER_BUTTON_LEFTSHOULDER])
+		|| SDL_GameControllerGetButton(did->controller,
+			static_cast<SDL_GameControllerButton>(did->mapping.button[SDL_CONTROLLER_BUTTON_LEFTSHOULDER])))
+	{
+		for (auto z = 0; z < 10; ++z)
+		{
+			PushFakeKey(SDLK_UP);
+		}
+	}
+	if ((did->mapping.is_retroarch || !did->is_controller)
+		&& SDL_JoystickGetButton(gui_joystick, did->mapping.button[SDL_CONTROLLER_BUTTON_RIGHTSHOULDER])
+		|| SDL_GameControllerGetButton(did->controller,
+			static_cast<SDL_GameControllerButton>(did->mapping.button[SDL_CONTROLLER_BUTTON_RIGHTSHOULDER])))
+	{
+		for (auto z = 0; z < 10; ++z)
+		{
+			PushFakeKey(SDLK_DOWN);
+		}
+	}
+
+	return true;
+}
+
+bool handle_joyaxis(const SDL_Event& event, bool& nav_left, bool& nav_right)
+{
+	const auto value = event.jaxis.value;
+	const auto axis = event.jaxis.axis;
+
+	if (axis == SDL_CONTROLLER_AXIS_LEFTX)
+	{
+		if (value > joystick_dead_zone && last_x != 1)
+		{
+			last_x = 1;
+			nav_right = true;
+		}
+		else if (value < -joystick_dead_zone && last_x != -1)
+		{
+			last_x = -1;
+			nav_left = true;
+		}
+		else if (value > -joystick_dead_zone && value < joystick_dead_zone)
+		{
+			last_x = 0;
+		}
+	}
+	else if (axis == SDL_CONTROLLER_AXIS_LEFTY)
+	{
+		if (value < -joystick_dead_zone && last_y != -1)
+		{
+			last_y = -1;
+			PushFakeKey(SDLK_UP);
+		}
+		else if (value > joystick_dead_zone && last_y != 1)
+		{
+			last_y = 1;
+			PushFakeKey(SDLK_DOWN);
+		}
+		else if (value > -joystick_dead_zone && value < joystick_dead_zone)
+		{
+			last_y = 0;
+		}
+	}
+	return true;
+}
+
+bool handle_finger(const SDL_Event& event, SDL_Event& touch_event)
+{
+	// Copy the event to touch_event
+	memcpy(&touch_event, &event, sizeof event);
+
+	// Calculate the x and y coordinates
+	const int x = gui_graphics->getTarget()->w * static_cast<int>(event.tfinger.x);
+	const int y = gui_graphics->getTarget()->h * static_cast<int>(event.tfinger.y);
+
+	switch (event.type)
+	{
+	case SDL_FINGERDOWN:
+		touch_event.type = SDL_MOUSEBUTTONDOWN;
+		touch_event.button.which = 0;
+		touch_event.button.button = SDL_BUTTON_LEFT;
+		touch_event.button.state = SDL_PRESSED;
+		touch_event.button.x = x;
+		touch_event.button.y = y;
+		break;
+	case SDL_FINGERUP:
+		touch_event.type = SDL_MOUSEBUTTONUP;
+		touch_event.button.which = 0;
+		touch_event.button.button = SDL_BUTTON_LEFT;
+		touch_event.button.state = SDL_RELEASED;
+		touch_event.button.x = x;
+		touch_event.button.y = y;
+		break;
+	case SDL_FINGERMOTION:
+		touch_event.type = SDL_MOUSEMOTION;
+		touch_event.motion.which = 0;
+		touch_event.motion.state = 0;
+		touch_event.motion.x = x;
+		touch_event.motion.y = y;
+		break;
+	default:
+		break;
+	}
+	return true;
+}
+
+bool handle_mousewheel(const SDL_Event& event)
+{
+	const auto key = event.wheel.y > 0 ? SDLK_UP : SDLK_DOWN;
+	const auto times = std::abs(event.wheel.y);
+
+	for (auto z = 0; z < times; ++z)
+	{
+		PushFakeKey(key);
+	}
+
+	return true;
+}
+

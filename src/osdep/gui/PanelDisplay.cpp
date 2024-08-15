@@ -1,12 +1,18 @@
 #include <guisan.hpp>
+#include <iomanip>
+#include <stdexcept>
 #include <guisan/sdl.hpp>
+#include <sstream>
 #include "SelectorEntry.hpp"
 #include "StringListModel.h"
 
 #include "sysdeps.h"
 #include "options.h"
+#include "uae.h"
 #include "custom.h"
+#include "xwin.h"
 #include "gui_handling.h"
+#include "drawing.h"
 
 const int amigawidth_values[] = { 640, 704, 720, 754 };
 const int amigaheight_values[] = { 400, 480, 512, 568, 576 };
@@ -28,8 +34,17 @@ static gcn::StringListModel fullscreen_modes_list(fullscreen_modes);
 static const std::vector<std::string> resolution = { "LowRes", "HighRes (normal)", "SuperHighRes" };
 static gcn::StringListModel resolution_list(resolution);
 
-static const std::vector<std::string> scaling_method = { "Auto", "Pixelated", "Smooth" };
+static const std::vector<std::string> scaling_method = { "Auto", "Pixelated", "Smooth", "Integer" };
 static gcn::StringListModel scaling_method_list(scaling_method);
+
+static const std::vector<std::string> res_autoswitch = { "Disabled", "Always On", "10%", "33%", "66%" };
+static gcn::StringListModel res_autoswitch_list(res_autoswitch);
+
+static const std::vector<std::string> vsync_options = { "-", "Lagless", "Lagless 50/60Hz", "Standard", "Standard 50/60Hz" };
+static gcn::StringListModel vsync_options_list(vsync_options);
+
+static std::vector<std::string> fps_options = { "PAL", "NTSC"};
+static gcn::StringListModel fps_options_list(fps_options);
 
 static gcn::Window* grpAmigaScreen;
 static gcn::CheckBox* chkManualCrop;
@@ -55,7 +70,11 @@ static gcn::Label* lblScreenmode;
 static gcn::DropDown* cboScreenmode;
 static gcn::Label* lblFullscreen;
 static gcn::DropDown* cboFullscreen;
-static gcn::CheckBox* chkVsync;
+
+static gcn::Label* lblVSyncNative;
+static gcn::DropDown* cboVSyncNative;
+static gcn::Label* lblVSyncRtg;
+static gcn::DropDown* cboVSyncRtg;
 
 static gcn::Window* grpCentering;
 static gcn::CheckBox* chkHorizontal;
@@ -85,12 +104,99 @@ static gcn::CheckBox* chkFilterLowRes;
 static gcn::CheckBox* chkFrameskip;
 static gcn::Slider* sldRefresh;
 static gcn::Label* lblFrameRate;
+
+static gcn::DropDown* cboFpsRate;
+static gcn::CheckBox* chkFpsAdj;
+static gcn::Slider* sldFpsAdj;
+static gcn::TextField* txtFpsAdj;
+
 static gcn::CheckBox* chkAspect;
 static gcn::CheckBox* chkBlackerThanBlack;
 
 static gcn::Label* lblBrightness;
 static gcn::Slider* sldBrightness;
 static gcn::Label* lblBrightnessValue;
+
+static gcn::Label* lblResSwitch;
+static gcn::DropDown* cboResSwitch;
+
+class AmigaScreenKeyListener : public gcn::KeyListener
+{
+public:
+	void keyReleased(gcn::KeyEvent& keyEvent) override
+	{
+		if (keyEvent.getSource() == txtFpsAdj && chkFpsAdj->isSelected())
+		{
+			if (keyEvent.getKey().getValue() == gcn::Key::ENTER)
+			{
+				const std::string tmp = txtFpsAdj->getText();
+				if (!tmp.empty()) {
+					TCHAR label[16];
+					label[0] = 0;
+					auto label_string = fps_options[cboFpsRate->getSelected()];
+					strncpy(label, label_string.c_str(), sizeof(label) - 1);
+					label[sizeof(label) - 1] = '\0';
+
+					struct chipset_refresh* cr;
+					for (int i = 0; i < MAX_CHIPSET_REFRESH_TOTAL; i++) {
+						cr = &changed_prefs.cr[i];
+						if (!_tcscmp(label, cr->label) || (cr->label[0] == 0 && label[0] == ':' && _tstol(label + 1) == i)) {
+							if (changed_prefs.cr_selected != i) {
+								changed_prefs.cr_selected = i;
+								chkFpsAdj->setSelected(cr->locked);
+								sldFpsAdj->setEnabled(cr->locked);
+								txtFpsAdj->setEnabled(cr->locked);
+							}
+							else {
+								cr->locked = chkFpsAdj->isSelected();
+								if (cr->locked) {
+									cr->inuse = true;
+								}
+								else {
+									// deactivate if plain uncustomized PAL or NTSC
+									if (!cr->commands[0] && !cr->filterprofile[0] && cr->resolution == 7 &&
+										cr->horiz < 0 && cr->vert < 0 && cr->lace < 0 && cr->vsync < 0 && cr->framelength < 0 &&
+										(cr == &changed_prefs.cr[CHIPSET_REFRESH_PAL] || cr == &changed_prefs.cr[CHIPSET_REFRESH_NTSC])) {
+										cr->inuse = false;
+									}
+								}
+							}
+							break;
+						}
+					}
+					try
+					{
+						double rate;
+						std::stringstream ss(tmp);
+						ss >> rate;
+						if (ss.fail()) {
+							throw std::invalid_argument("Invalid FPS argument in text box");
+						}
+
+						// Round the rate to 6 decimal places
+						rate = std::round(rate * 1e6) / 1e6;
+
+						cr->rate = static_cast<float>(rate);
+					}
+					catch (const std::invalid_argument&) 
+					{
+						write_log("Invalid FPS argument in text box, ignoring value\n");
+					}
+					catch (const std::out_of_range&) {
+						write_log("Out of range FPS argument in text box, ignoring value\n");
+					}
+
+					TCHAR buffer[20];
+					_stprintf(buffer, _T("%.6f"), cr->rate);
+					txtFpsAdj->setText(std::string(buffer));
+					sldFpsAdj->setValue(cr->rate);
+				}
+			}
+		}
+	}
+};
+
+AmigaScreenKeyListener* amigaScreenKeyListener;
 
 class AmigaScreenActionListener : public gcn::ActionListener
 {
@@ -107,7 +213,7 @@ public:
 		else if (actionEvent.getSource() == sldAmigaWidth)
 		{
 			const int new_width = amigawidth_values[static_cast<int>(sldAmigaWidth->getValue())];
-			const int new_x = (754 - new_width) / 2;
+			const int new_x = ((AMIGA_WIDTH_MAX << changed_prefs.gfx_resolution) - new_width) / 2;
 
 			changed_prefs.gfx_manual_crop_width = new_width;
 			changed_prefs.gfx_horizontal_offset = new_x;
@@ -115,7 +221,7 @@ public:
 		else if (actionEvent.getSource() == sldAmigaHeight)
 		{
 			const int new_height = amigaheight_values[static_cast<int>(sldAmigaHeight->getValue())];
-			const int new_y = (576 - new_height) / 2;
+			const int new_y = ((AMIGA_HEIGHT_MAX << changed_prefs.gfx_vresolution) - new_height) / 2;
 
 			changed_prefs.gfx_manual_crop_height = new_height;
 			changed_prefs.gfx_vertical_offset = new_y;
@@ -130,9 +236,6 @@ public:
 
 		else if (actionEvent.getSource() == chkBorderless)
 			changed_prefs.borderless = chkBorderless->isSelected();
-
-		else if (actionEvent.getSource() == chkVsync)
-			changed_prefs.gfx_apmode[0].gfx_vsync = chkVsync->isSelected();
 
 		else if (actionEvent.getSource() == sldHOffset)
 		{
@@ -153,6 +256,81 @@ public:
 			sldRefresh->setValue(changed_prefs.gfx_framerate);
 			lblFrameRate->setCaption(std::to_string(changed_prefs.gfx_framerate));
 			lblFrameRate->adjustSize();
+		}
+		else if (actionEvent.getSource() == cboFpsRate
+			|| actionEvent.getSource() == chkFpsAdj
+			|| actionEvent.getSource() == sldFpsAdj)
+		{
+			sldFpsAdj->setEnabled(chkFpsAdj->isSelected());
+			txtFpsAdj->setEnabled(chkFpsAdj->isSelected());
+
+			int i;
+			bool updaterate = false, updateslider = false;
+			TCHAR label[16];
+			label[0] = 0;
+			auto label_string = fps_options[cboFpsRate->getSelected()];
+			strncpy(label, label_string.c_str(), sizeof(label) - 1);
+			label[sizeof(label) - 1] = '\0';
+
+			struct chipset_refresh* cr;
+			for (i = 0; i < MAX_CHIPSET_REFRESH_TOTAL; i++) {
+				cr = &changed_prefs.cr[i];
+				if (!_tcscmp(label, cr->label) || (cr->label[0] == 0 && label[0] == ':' && _tstol(label + 1) == i)) {
+					if (changed_prefs.cr_selected != i) {
+						changed_prefs.cr_selected = i;
+						updaterate = true;
+						updateslider = true;
+						chkFpsAdj->setSelected(cr->locked);
+						sldFpsAdj->setEnabled(cr->locked);
+						txtFpsAdj->setEnabled(cr->locked);
+					}
+					else {
+						cr->locked = chkFpsAdj->isSelected();
+						if (cr->locked) {
+							cr->inuse = true;
+						}
+						else {
+							// deactivate if plain uncustomized PAL or NTSC
+							if (!cr->commands[0] && !cr->filterprofile[0] && cr->resolution == 7 &&
+								cr->horiz < 0 && cr->vert < 0 && cr->lace < 0 && cr->vsync < 0 && cr->framelength < 0 &&
+								(cr == &changed_prefs.cr[CHIPSET_REFRESH_PAL] || cr == &changed_prefs.cr[CHIPSET_REFRESH_NTSC])) {
+								cr->inuse = false;
+							}
+						}
+					}
+					break;
+				}
+			}
+			if (cr->locked) {
+				if (actionEvent.getSource() == sldFpsAdj) {
+					i = sldFpsAdj->getValue();//xSendDlgItemMessage(hDlg, IDC_FRAMERATE2, TBM_GETPOS, 0, 0);
+					if (i != (int)cr->rate)
+						cr->rate = (float)i;
+					updaterate = true;
+				}
+			}
+			else if (i == CHIPSET_REFRESH_PAL) {
+				cr->rate = 50.0f;
+			}
+			else if (i == CHIPSET_REFRESH_NTSC) {
+				cr->rate = 60.0f;
+			}
+			if (cr->rate > 0 && cr->rate < 1) {
+				cr->rate = currprefs.ntscmode ? 60.0f : 50.0f;
+				updaterate = true;
+			}
+			if (cr->rate > 300) {
+				cr->rate = currprefs.ntscmode ? 60.0f : 50.0f;
+				updaterate = true;
+			}
+			if (updaterate) {
+				TCHAR buffer[20];
+				_stprintf(buffer, _T("%.6f"), cr->rate);
+				txtFpsAdj->setText(std::string(buffer));
+			}
+			if (updateslider) {
+				sldFpsAdj->setValue(cr->rate);
+			}
 		}
 		else if (actionEvent.getSource() == sldBrightness)
 		{
@@ -214,6 +392,57 @@ public:
 
 		else if (actionEvent.getSource() == chkFilterLowRes)
 			changed_prefs.gfx_lores_mode = chkFilterLowRes->isSelected() ? 1 : 0;
+
+		else if (actionEvent.getSource() == cboResSwitch)
+		{
+			int pos = cboResSwitch->getSelected();
+			if (pos == 0)
+				changed_prefs.gfx_autoresolution = 0;
+			else if (pos == 1)
+				changed_prefs.gfx_autoresolution = 1;
+			else if (pos == 2)
+				changed_prefs.gfx_autoresolution = 10;
+			else if (pos == 3)
+				changed_prefs.gfx_autoresolution = 33;
+			else if (pos == 4)
+				changed_prefs.gfx_autoresolution = 66;
+		}
+
+		int i = cboVSyncNative->getSelected();
+		changed_prefs.gfx_apmode[0].gfx_vsync = 0;
+		changed_prefs.gfx_apmode[0].gfx_vsyncmode = 0;
+		if (i == 1) {
+			changed_prefs.gfx_apmode[0].gfx_vsync = 1;
+			changed_prefs.gfx_apmode[0].gfx_vsyncmode = 1;
+		}
+		else if (i == 2) {
+			changed_prefs.gfx_apmode[0].gfx_vsync = 2;
+			changed_prefs.gfx_apmode[0].gfx_vsyncmode = 1;
+		}
+		else if (i == 3) {
+			changed_prefs.gfx_apmode[0].gfx_vsync = 1;
+			changed_prefs.gfx_apmode[0].gfx_vsyncmode = 0;
+		}
+		else if (i == 4) {
+			changed_prefs.gfx_apmode[0].gfx_vsync = 2;
+			changed_prefs.gfx_apmode[0].gfx_vsyncmode = 0;
+		}
+		else if (i == 5) {
+			changed_prefs.gfx_apmode[0].gfx_vsync = -1;
+			changed_prefs.gfx_apmode[0].gfx_vsyncmode = 0;
+		}
+
+		i = cboVSyncRtg->getSelected();
+		changed_prefs.gfx_apmode[1].gfx_vsync = 0;
+		changed_prefs.gfx_apmode[1].gfx_vsyncmode = 0;
+		if (i == 1) {
+			changed_prefs.gfx_apmode[1].gfx_vsync = 1;
+			changed_prefs.gfx_apmode[1].gfx_vsyncmode = 1;
+		}
+		else if (i == 2) {
+			changed_prefs.gfx_apmode[1].gfx_vsync = -1;
+			changed_prefs.gfx_apmode[1].gfx_vsyncmode = 0;
+		}
 
 		RefreshPanelDisplay();
 	}
@@ -322,6 +551,7 @@ static LineModeActionListener* lineModeActionListener;
 void InitPanelDisplay(const config_category& category)
 {
 	amigaScreenActionListener = new AmigaScreenActionListener();
+	amigaScreenKeyListener = new AmigaScreenKeyListener();
 	scalingMethodActionListener = new ScalingMethodActionListener();
 	lineModeActionListener = new LineModeActionListener();
 	
@@ -331,60 +561,101 @@ void InitPanelDisplay(const config_category& category)
 	lblFullscreen->setAlignment(gcn::Graphics::LEFT);
 	cboFullscreen = new gcn::DropDown(&fullscreen_resolutions_list);
 	cboFullscreen->setSize(150, cboFullscreen->getHeight());
-	cboFullscreen->setBaseColor(gui_baseCol);
-	cboFullscreen->setBackgroundColor(colTextboxBackground);
+	cboFullscreen->setBaseColor(gui_base_color);
+	cboFullscreen->setBackgroundColor(gui_textbox_background_color);
+	cboFullscreen->setForegroundColor(gui_foreground_color);
+	cboFullscreen->setSelectionColor(gui_selection_color);
 	cboFullscreen->setId("cboFullscreen");
 	cboFullscreen->addActionListener(amigaScreenActionListener);
 
 	chkManualCrop = new gcn::CheckBox("Manual Crop");
 	chkManualCrop->setId("chkManualCrop");
+	chkManualCrop->setBaseColor(gui_base_color);
+	chkManualCrop->setBackgroundColor(gui_textbox_background_color);
+	chkManualCrop->setForegroundColor(gui_foreground_color);
 	chkManualCrop->addActionListener(amigaScreenActionListener);
 
 	lblAmigaWidth = new gcn::Label("Width:");
 	lblAmigaWidth->setAlignment(gcn::Graphics::LEFT);
 	sldAmigaWidth = new gcn::Slider(0, AMIGAWIDTH_COUNT - 1);
 	sldAmigaWidth->setSize(180, SLIDER_HEIGHT);
-	sldAmigaWidth->setBaseColor(gui_baseCol);
+	sldAmigaWidth->setBaseColor(gui_base_color);
+	sldAmigaWidth->setBackgroundColor(gui_textbox_background_color);
+	sldAmigaWidth->setForegroundColor(gui_foreground_color);
 	sldAmigaWidth->setMarkerLength(20);
 	sldAmigaWidth->setStepLength(1);
 	sldAmigaWidth->setId("sldWidth");
 	sldAmigaWidth->addActionListener(amigaScreenActionListener);
+
 	txtAmigaWidth = new gcn::TextField();
 	txtAmigaWidth->setSize(35, TEXTFIELD_HEIGHT);
-	txtAmigaWidth->setBackgroundColor(colTextboxBackground);
+	txtAmigaWidth->setBaseColor(gui_base_color);
+	txtAmigaWidth->setBackgroundColor(gui_textbox_background_color);
+	txtAmigaWidth->setForegroundColor(gui_foreground_color);
 	txtAmigaWidth->addActionListener(amigaScreenActionListener);
 
 	lblAmigaHeight = new gcn::Label("Height:");
 	lblAmigaHeight->setAlignment(gcn::Graphics::LEFT);
 	sldAmigaHeight = new gcn::Slider(0, AMIGAHEIGHT_COUNT - 1);
 	sldAmigaHeight->setSize(180, SLIDER_HEIGHT);
-	sldAmigaHeight->setBaseColor(gui_baseCol);
+	sldAmigaHeight->setBaseColor(gui_base_color);
+	sldAmigaHeight->setBackgroundColor(gui_textbox_background_color);
+	sldAmigaHeight->setForegroundColor(gui_foreground_color);
 	sldAmigaHeight->setMarkerLength(20);
 	sldAmigaHeight->setStepLength(1);
 	sldAmigaHeight->setId("sldHeight");
 	sldAmigaHeight->addActionListener(amigaScreenActionListener);
+
 	txtAmigaHeight = new gcn::TextField();
 	txtAmigaHeight->setSize(35, TEXTFIELD_HEIGHT);
-	txtAmigaHeight->setBackgroundColor(colTextboxBackground);
+	txtAmigaHeight->setBaseColor(gui_base_color);
+	txtAmigaHeight->setBackgroundColor(gui_textbox_background_color);
+	txtAmigaHeight->setForegroundColor(gui_foreground_color);
 	txtAmigaHeight->addActionListener(amigaScreenActionListener);
 
 	chkAutoCrop = new gcn::CheckBox("Auto Crop");
 	chkAutoCrop->setId("chkAutoCrop");
+	chkAutoCrop->setBaseColor(gui_base_color);
+	chkAutoCrop->setBackgroundColor(gui_textbox_background_color);
+	chkAutoCrop->setForegroundColor(gui_foreground_color);
 	chkAutoCrop->addActionListener(amigaScreenActionListener);
 
 	chkBorderless = new gcn::CheckBox("Borderless");
 	chkBorderless->setId("chkBorderless");
+	chkBorderless->setBaseColor(gui_base_color);
+	chkBorderless->setBackgroundColor(gui_textbox_background_color);
+	chkBorderless->setForegroundColor(gui_foreground_color);
 	chkBorderless->addActionListener(amigaScreenActionListener);
 
-	chkVsync = new gcn::CheckBox("VSync");
-	chkVsync->setId("chkVsync");
-	chkVsync->addActionListener(amigaScreenActionListener);
+	lblVSyncNative = new gcn::Label("VSync Native:");
+	lblVSyncNative->setAlignment(gcn::Graphics::LEFT);
+	cboVSyncNative = new gcn::DropDown(&vsync_options_list);
+	cboVSyncNative->setSize(150, cboVSyncNative->getHeight());
+	cboVSyncNative->setBaseColor(gui_base_color);
+	cboVSyncNative->setBackgroundColor(gui_textbox_background_color);
+	cboVSyncNative->setForegroundColor(gui_foreground_color);
+	cboVSyncNative->setSelectionColor(gui_selection_color);
+	cboVSyncNative->setId("cboVSyncNative");
+	cboVSyncNative->addActionListener(amigaScreenActionListener);
+
+	lblVSyncRtg = new gcn::Label("VSync RTG:");
+	lblVSyncRtg->setAlignment(gcn::Graphics::LEFT);
+	cboVSyncRtg = new gcn::DropDown(&vsync_options_list);
+	cboVSyncRtg->setSize(150, cboVSyncRtg->getHeight());
+	cboVSyncRtg->setBaseColor(gui_base_color);
+	cboVSyncRtg->setBackgroundColor(gui_textbox_background_color);
+	cboVSyncRtg->setForegroundColor(gui_foreground_color);
+	cboVSyncRtg->setSelectionColor(gui_selection_color);
+	cboVSyncRtg->setId("cboVSyncRtg");
+	cboVSyncRtg->addActionListener(amigaScreenActionListener);
 
 	lblHOffset = new gcn::Label("H. Offset:");
 	lblHOffset->setAlignment(gcn::Graphics::LEFT);
 	sldHOffset = new gcn::Slider(-80, 80);
 	sldHOffset->setSize(200, SLIDER_HEIGHT);
-	sldHOffset->setBaseColor(gui_baseCol);
+	sldHOffset->setBaseColor(gui_base_color);
+	sldHOffset->setBackgroundColor(gui_textbox_background_color);
+	sldHOffset->setForegroundColor(gui_foreground_color);
 	sldHOffset->setMarkerLength(20);
 	sldHOffset->setStepLength(1);
 	sldHOffset->setId("sldHOffset");
@@ -396,7 +667,9 @@ void InitPanelDisplay(const config_category& category)
 	lblVOffset->setAlignment(gcn::Graphics::LEFT);
 	sldVOffset = new gcn::Slider(-80, 80);
 	sldVOffset->setSize(200, SLIDER_HEIGHT);
-	sldVOffset->setBaseColor(gui_baseCol);
+	sldVOffset->setBaseColor(gui_base_color);
+	sldVOffset->setBackgroundColor(gui_textbox_background_color);
+	sldVOffset->setForegroundColor(gui_foreground_color);
 	sldVOffset->setMarkerLength(20);
 	sldVOffset->setStepLength(1);
 	sldVOffset->setId("sldVOffset");
@@ -406,34 +679,57 @@ void InitPanelDisplay(const config_category& category)
 
 	chkHorizontal = new gcn::CheckBox("Horizontal");
 	chkHorizontal->setId("chkHorizontal");
+	chkHorizontal->setBaseColor(gui_base_color);
+	chkHorizontal->setBackgroundColor(gui_textbox_background_color);
+	chkHorizontal->setForegroundColor(gui_foreground_color);
 	chkHorizontal->addActionListener(amigaScreenActionListener);
 	chkVertical = new gcn::CheckBox("Vertical");
 	chkVertical->setId("chkVertical");
+	chkVertical->setBaseColor(gui_base_color);
+	chkVertical->setBackgroundColor(gui_textbox_background_color);
+	chkVertical->setForegroundColor(gui_foreground_color);
 	chkVertical->addActionListener(amigaScreenActionListener);
 
 	chkFlickerFixer = new gcn::CheckBox("Remove interlace artifacts");
 	chkFlickerFixer->setId("chkFlickerFixer");
+	chkFlickerFixer->setBaseColor(gui_base_color);
+	chkFlickerFixer->setBackgroundColor(gui_textbox_background_color);
+	chkFlickerFixer->setForegroundColor(gui_foreground_color);
 	chkFlickerFixer->addActionListener(amigaScreenActionListener);
 
 	chkFilterLowRes = new gcn::CheckBox("Filtered Low Res");
 	chkFilterLowRes->setId("chkFilterLowRes");
+	chkFilterLowRes->setBaseColor(gui_base_color);
+	chkFilterLowRes->setBackgroundColor(gui_textbox_background_color);
+	chkFilterLowRes->setForegroundColor(gui_foreground_color);
 	chkFilterLowRes->addActionListener(amigaScreenActionListener);
 
 	chkBlackerThanBlack = new gcn::CheckBox("Blacker than black");
 	chkBlackerThanBlack->setId("chkBlackerThanBlack");
+	chkBlackerThanBlack->setBaseColor(gui_base_color);
+	chkBlackerThanBlack->setBackgroundColor(gui_textbox_background_color);
+	chkBlackerThanBlack->setForegroundColor(gui_foreground_color);
 	chkBlackerThanBlack->addActionListener(amigaScreenActionListener);
 	
 	chkAspect = new gcn::CheckBox("Correct Aspect Ratio");
 	chkAspect->setId("chkAspect");
+	chkAspect->setBaseColor(gui_base_color);
+	chkAspect->setBackgroundColor(gui_textbox_background_color);
+	chkAspect->setForegroundColor(gui_foreground_color);
 	chkAspect->addActionListener(amigaScreenActionListener);
 
 	chkFrameskip = new gcn::CheckBox("Refresh:");
 	chkFrameskip->setId("chkFrameskip");
+	chkFrameskip->setBaseColor(gui_base_color);
+	chkFrameskip->setBackgroundColor(gui_textbox_background_color);
+	chkFrameskip->setForegroundColor(gui_foreground_color);
 	chkFrameskip->addActionListener(amigaScreenActionListener);
 
 	sldRefresh = new gcn::Slider(1, 10);
 	sldRefresh->setSize(100, SLIDER_HEIGHT);
-	sldRefresh->setBaseColor(gui_baseCol);
+	sldRefresh->setBaseColor(gui_base_color);
+	sldRefresh->setBackgroundColor(gui_textbox_background_color);
+	sldRefresh->setForegroundColor(gui_foreground_color);
 	sldRefresh->setMarkerLength(20);
 	sldRefresh->setStepLength(1);
 	sldRefresh->setId("sldRefresh");
@@ -441,11 +737,45 @@ void InitPanelDisplay(const config_category& category)
 	lblFrameRate = new gcn::Label("50");
 	lblFrameRate->setAlignment(gcn::Graphics::LEFT);
 
+	chkFpsAdj = new gcn::CheckBox("FPS Adj:");
+	chkFpsAdj->setId("chkFpsAdj");
+	chkFpsAdj->setBaseColor(gui_base_color);
+	chkFpsAdj->setBackgroundColor(gui_textbox_background_color);
+	chkFpsAdj->setForegroundColor(gui_foreground_color);
+	chkFpsAdj->addActionListener(amigaScreenActionListener);
+
+	cboFpsRate = new gcn::DropDown(&fps_options_list);
+	cboFpsRate->setSize(80, cboFpsRate->getHeight());
+	cboFpsRate->setBaseColor(gui_base_color);
+	cboFpsRate->setBackgroundColor(gui_textbox_background_color);
+	cboFpsRate->setForegroundColor(gui_foreground_color);
+	cboFpsRate->setSelectionColor(gui_selection_color);
+	cboFpsRate->setId("cboFpsRate");
+	cboFpsRate->addActionListener(amigaScreenActionListener);
+
+	sldFpsAdj = new gcn::Slider(1, 99);
+	sldFpsAdj->setSize(100, SLIDER_HEIGHT);
+	sldFpsAdj->setBaseColor(gui_base_color);
+	sldFpsAdj->setBackgroundColor(gui_textbox_background_color);
+	sldFpsAdj->setForegroundColor(gui_foreground_color);
+	sldFpsAdj->setMarkerLength(20);
+	sldFpsAdj->setStepLength(1);
+	sldFpsAdj->setId("sldFpsAdj");
+	sldFpsAdj->addActionListener(amigaScreenActionListener);
+	txtFpsAdj = new gcn::TextField();
+	txtFpsAdj->setSize(80, TEXTFIELD_HEIGHT);
+	txtFpsAdj->setBaseColor(gui_base_color);
+	txtFpsAdj->setBackgroundColor(gui_textbox_background_color);
+	txtFpsAdj->setForegroundColor(gui_foreground_color);
+	txtFpsAdj->addKeyListener(amigaScreenKeyListener);
+
 	lblBrightness = new gcn::Label("Brightness:");
 	lblBrightness->setAlignment(gcn::Graphics::LEFT);
 	sldBrightness = new gcn::Slider(-200, 200);
 	sldBrightness->setSize(100, SLIDER_HEIGHT);
-	sldBrightness->setBaseColor(gui_baseCol);
+	sldBrightness->setBaseColor(gui_base_color);
+	sldBrightness->setBackgroundColor(gui_textbox_background_color);
+	sldBrightness->setForegroundColor(gui_foreground_color);
 	sldBrightness->setMarkerLength(20);
 	sldBrightness->setStepLength(1);
 	sldBrightness->setId("sldBrightness");
@@ -457,8 +787,10 @@ void InitPanelDisplay(const config_category& category)
 	lblScreenmode->setAlignment(gcn::Graphics::RIGHT);
 	cboScreenmode = new gcn::DropDown(&fullscreen_modes_list);
 	cboScreenmode->setSize(150, cboScreenmode->getHeight());
-	cboScreenmode->setBaseColor(gui_baseCol);
-	cboScreenmode->setBackgroundColor(colTextboxBackground);
+	cboScreenmode->setBaseColor(gui_base_color);
+	cboScreenmode->setBackgroundColor(gui_textbox_background_color);
+	cboScreenmode->setForegroundColor(gui_foreground_color);
+	cboScreenmode->setSelectionColor(gui_selection_color);
 	cboScreenmode->setId("cboScreenmode");
 	cboScreenmode->addActionListener(amigaScreenActionListener);
 
@@ -466,10 +798,23 @@ void InitPanelDisplay(const config_category& category)
 	lblResolution->setAlignment(gcn::Graphics::RIGHT);
 	cboResolution = new gcn::DropDown(&resolution_list);
 	cboResolution->setSize(150, cboResolution->getHeight());
-	cboResolution->setBaseColor(gui_baseCol);
-	cboResolution->setBackgroundColor(colTextboxBackground);
+	cboResolution->setBaseColor(gui_base_color);
+	cboResolution->setBackgroundColor(gui_textbox_background_color);
+	cboResolution->setForegroundColor(gui_foreground_color);
+	cboResolution->setSelectionColor(gui_selection_color);
 	cboResolution->setId("cboResolution");
 	cboResolution->addActionListener(amigaScreenActionListener);
+
+	lblResSwitch = new gcn::Label("Res. autoswitch:");
+	lblResSwitch->setAlignment(gcn::Graphics::RIGHT);
+	cboResSwitch = new gcn::DropDown(&res_autoswitch_list);
+	cboResSwitch->setSize(150, cboResSwitch->getHeight());
+	cboResSwitch->setBaseColor(gui_base_color);
+	cboResSwitch->setBackgroundColor(gui_textbox_background_color);
+	cboResSwitch->setForegroundColor(gui_foreground_color);
+	cboResSwitch->setSelectionColor(gui_selection_color);
+	cboResSwitch->setId("cboResSwitch");
+	cboResSwitch->addActionListener(amigaScreenActionListener);
 	
 	grpAmigaScreen = new gcn::Window("Amiga Screen");
 	grpAmigaScreen->setPosition(DISTANCE_BORDER, DISTANCE_BORDER);
@@ -498,8 +843,13 @@ void InitPanelDisplay(const config_category& category)
 	posY += sldAmigaHeight->getHeight() + DISTANCE_NEXT_Y;
 	grpAmigaScreen->add(chkAutoCrop, DISTANCE_BORDER, posY);
 	grpAmigaScreen->add(chkBorderless, chkAutoCrop->getX() + chkAutoCrop->getWidth() + DISTANCE_NEXT_X, posY);
-	grpAmigaScreen->add(chkVsync, chkBorderless->getX() + chkBorderless->getWidth() + DISTANCE_NEXT_X, posY);
-	posY += chkVsync->getHeight() + DISTANCE_NEXT_Y;
+	posY += chkAutoCrop->getHeight() + DISTANCE_NEXT_Y;
+	grpAmigaScreen->add(lblVSyncNative, DISTANCE_BORDER, posY);
+	grpAmigaScreen->add(cboVSyncNative, lblVSyncNative->getX() + lblVSyncNative->getWidth() + 8, posY);
+	posY += cboVSyncNative->getHeight() + DISTANCE_NEXT_Y;
+	grpAmigaScreen->add(lblVSyncRtg, DISTANCE_BORDER, posY);
+	grpAmigaScreen->add(cboVSyncRtg, cboVSyncNative->getX(), posY);
+	posY += cboVSyncRtg->getHeight() + DISTANCE_NEXT_Y;
 	grpAmigaScreen->add(lblHOffset, DISTANCE_BORDER, posY);
 	grpAmigaScreen->add(sldHOffset, lblHOffset->getX() + lblHOffset->getWidth() + DISTANCE_NEXT_X, posY);
 	grpAmigaScreen->add(lblHOffsetValue, sldHOffset->getX() + sldHOffset->getWidth() + 8, posY + 2);
@@ -509,9 +859,10 @@ void InitPanelDisplay(const config_category& category)
 	grpAmigaScreen->add(lblVOffsetValue, sldVOffset->getX() + sldVOffset->getWidth() + 8, posY + 2);
 
 	grpAmigaScreen->setMovable(false);
-	grpAmigaScreen->setSize(chkVsync->getX() + chkVsync->getWidth() + DISTANCE_BORDER + DISTANCE_NEXT_X * 3, TITLEBAR_HEIGHT + lblVOffset->getY() + lblVOffset->getHeight() + DISTANCE_NEXT_Y);
+	grpAmigaScreen->setSize(cboVSyncNative->getX() + cboVSyncNative->getWidth() + DISTANCE_BORDER + DISTANCE_NEXT_X * 4, TITLEBAR_HEIGHT + lblVOffset->getY() + lblVOffset->getHeight() + DISTANCE_NEXT_Y);
 	grpAmigaScreen->setTitleBarHeight(TITLEBAR_HEIGHT);
-	grpAmigaScreen->setBaseColor(gui_baseCol);
+	grpAmigaScreen->setBaseColor(gui_base_color);
+	grpAmigaScreen->setForegroundColor(gui_foreground_color);
 	category.panel->add(grpAmigaScreen);
 
 	grpCentering = new gcn::Window("Centering");
@@ -519,7 +870,8 @@ void InitPanelDisplay(const config_category& category)
 	grpCentering->add(chkVertical, DISTANCE_BORDER, chkHorizontal->getY() + chkHorizontal->getHeight() + DISTANCE_NEXT_Y);
 	grpCentering->setMovable(false);
 	grpCentering->setTitleBarHeight(TITLEBAR_HEIGHT);
-	grpCentering->setBaseColor(gui_baseCol);
+	grpCentering->setBaseColor(gui_base_color);
+	grpCentering->setForegroundColor(gui_foreground_color);
 	grpCentering->setSize(chkHorizontal->getX() + chkHorizontal->getWidth() + DISTANCE_BORDER * 8, TITLEBAR_HEIGHT + chkVertical->getY() + chkVertical->getHeight() + DISTANCE_NEXT_Y);
 	grpCentering->setPosition(category.panel->getWidth() - DISTANCE_BORDER - grpCentering->getWidth(), DISTANCE_BORDER);
 	category.panel->add(grpCentering);	
@@ -529,36 +881,57 @@ void InitPanelDisplay(const config_category& category)
 	lblScalingMethod->setAlignment(gcn::Graphics::RIGHT);
 	cboScalingMethod = new gcn::DropDown(&scaling_method_list);
 	cboScalingMethod->setSize(150, cboScalingMethod->getHeight());
-	cboScalingMethod->setBaseColor(gui_baseCol);
-	cboScalingMethod->setBackgroundColor(colTextboxBackground);
+	cboScalingMethod->setBaseColor(gui_base_color);
+	cboScalingMethod->setBackgroundColor(gui_textbox_background_color);
+	cboScalingMethod->setForegroundColor(gui_foreground_color);
+	cboScalingMethod->setSelectionColor(gui_selection_color);
 	cboScalingMethod->setId("cboScalingMethod");
 	cboScalingMethod->addActionListener(scalingMethodActionListener);
 	category.panel->add(lblScalingMethod, DISTANCE_BORDER, posY);
-	category.panel->add(cboScalingMethod, lblScalingMethod->getX() + lblScalingMethod->getWidth() + 8, posY);
+	category.panel->add(cboScalingMethod, lblScalingMethod->getX() + lblScalingMethod->getWidth() + 15, posY);
 	posY += cboScalingMethod->getHeight() + DISTANCE_NEXT_Y;
 
 	category.panel->add(lblResolution, DISTANCE_BORDER, posY);
 	category.panel->add(cboResolution, cboScalingMethod->getX(), posY);
 	posY += cboResolution->getHeight() + DISTANCE_NEXT_Y;
+
+	category.panel->add(lblResSwitch, DISTANCE_BORDER, posY);
+	category.panel->add(cboResSwitch, cboScalingMethod->getX(), posY);
+	posY += cboResSwitch->getHeight() + DISTANCE_NEXT_Y;
 	
 	optSingle = new gcn::RadioButton("Single", "linemodegroup");
 	optSingle->setId("optSingle");
+	optSingle->setBaseColor(gui_base_color);
+	optSingle->setBackgroundColor(gui_textbox_background_color);
+	optSingle->setForegroundColor(gui_foreground_color);
 	optSingle->addActionListener(lineModeActionListener);
 
 	optDouble = new gcn::RadioButton("Double", "linemodegroup");
 	optDouble->setId("optDouble");
+	optDouble->setBaseColor(gui_base_color);
+	optDouble->setBackgroundColor(gui_textbox_background_color);
+	optDouble->setForegroundColor(gui_foreground_color);
 	optDouble->addActionListener(lineModeActionListener);
 
 	optScanlines = new gcn::RadioButton("Scanlines", "linemodegroup");
 	optScanlines->setId("optScanlines");
+	optScanlines->setBaseColor(gui_base_color);
+	optScanlines->setBackgroundColor(gui_textbox_background_color);
+	optScanlines->setForegroundColor(gui_foreground_color);
 	optScanlines->addActionListener(lineModeActionListener);
 
 	optDouble2 = new gcn::RadioButton("Double, fields", "linemodegroup");
 	optDouble2->setId("optDouble2");
+	optDouble2->setBaseColor(gui_base_color);
+	optDouble2->setBackgroundColor(gui_textbox_background_color);
+	optDouble2->setForegroundColor(gui_foreground_color);
 	optDouble2->addActionListener(lineModeActionListener);
 
 	optDouble3 = new gcn::RadioButton("Double, fields+", "linemodegroup");
 	optDouble3->setId("optDouble3");
+	optDouble3->setBaseColor(gui_base_color);
+	optDouble3->setBackgroundColor(gui_textbox_background_color);
+	optDouble3->setForegroundColor(gui_foreground_color);
 	optDouble3->addActionListener(lineModeActionListener);
 	
 	grpLineMode = new gcn::Window("Line mode");
@@ -571,23 +944,36 @@ void InitPanelDisplay(const config_category& category)
 	grpLineMode->setMovable(false);
 	grpLineMode->setSize(grpCentering->getWidth(), TITLEBAR_HEIGHT + optDouble3->getY() + optDouble3->getHeight() + DISTANCE_NEXT_Y);
 	grpLineMode->setTitleBarHeight(TITLEBAR_HEIGHT);
-	grpLineMode->setBaseColor(gui_baseCol);	
+	grpLineMode->setBaseColor(gui_base_color);
+	grpLineMode->setForegroundColor(gui_foreground_color);
 	category.panel->add(grpLineMode);
 
 	optISingle = new gcn::RadioButton("Single", "ilinemodegroup");
 	optISingle->setId("optISingle");
+	optISingle->setBaseColor(gui_base_color);
+	optISingle->setBackgroundColor(gui_textbox_background_color);
+	optISingle->setForegroundColor(gui_foreground_color);
 	optISingle->addActionListener(lineModeActionListener);
 
 	optIDouble = new gcn::RadioButton("Double, frames", "ilinemodegroup");
 	optIDouble->setId("optIDouble");
+	optIDouble->setBaseColor(gui_base_color);
+	optIDouble->setBackgroundColor(gui_textbox_background_color);
+	optIDouble->setForegroundColor(gui_foreground_color);
 	optIDouble->addActionListener(lineModeActionListener);
 
 	optIDouble2 = new gcn::RadioButton("Double, fields", "ilinemodegroup");
 	optIDouble2->setId("optIDouble2");
+	optIDouble2->setBaseColor(gui_base_color);
+	optIDouble2->setBackgroundColor(gui_textbox_background_color);
+	optIDouble2->setForegroundColor(gui_foreground_color);
 	optIDouble2->addActionListener(lineModeActionListener);
 	
 	optIDouble3 = new gcn::RadioButton("Double, fields+", "ilinemodegroup");
 	optIDouble3->setId("optIDouble3");
+	optIDouble3->setBaseColor(gui_base_color);
+	optIDouble3->setBackgroundColor(gui_textbox_background_color);
+	optIDouble3->setForegroundColor(gui_foreground_color);
 	optIDouble3->addActionListener(lineModeActionListener);
 
 	grpILineMode = new gcn::Window("Interlaced line mode");
@@ -599,7 +985,8 @@ void InitPanelDisplay(const config_category& category)
 	grpILineMode->setMovable(false);
 	grpILineMode->setSize(grpCentering->getWidth(), TITLEBAR_HEIGHT + optIDouble3->getY() + optIDouble3->getHeight() + DISTANCE_NEXT_Y);
 	grpILineMode->setTitleBarHeight(TITLEBAR_HEIGHT);
-	grpILineMode->setBaseColor(gui_baseCol);
+	grpILineMode->setBaseColor(gui_base_color);
+	grpILineMode->setForegroundColor(gui_foreground_color);
 	category.panel->add(grpILineMode);
 
 	category.panel->add(chkBlackerThanBlack, DISTANCE_BORDER, posY);
@@ -615,12 +1002,16 @@ void InitPanelDisplay(const config_category& category)
 	category.panel->add(chkFrameskip, DISTANCE_BORDER, posY);
 	category.panel->add(sldRefresh, chkFrameskip->getX() + chkFrameskip->getWidth() + DISTANCE_NEXT_X + 1, posY);
 	category.panel->add(lblFrameRate, sldRefresh->getX() + sldRefresh->getWidth() + 8, posY + 2);
+
+	category.panel->add(chkFpsAdj, lblFrameRate->getX() + lblFrameRate->getWidth() + DISTANCE_NEXT_X, posY);
+	category.panel->add(sldFpsAdj, chkFpsAdj->getX() + chkFpsAdj->getWidth() + DISTANCE_NEXT_X + 1, posY);
+	category.panel->add(txtFpsAdj, sldFpsAdj->getX() + sldFpsAdj->getWidth() + 8, posY);
+	category.panel->add(cboFpsRate, txtFpsAdj->getX(), chkFlickerFixer->getY());
 	posY += chkFrameskip->getHeight() + DISTANCE_NEXT_Y;
 
 	category.panel->add(lblBrightness, DISTANCE_BORDER, posY);
 	category.panel->add(sldBrightness, lblBrightness->getX() + lblBrightness->getWidth() + DISTANCE_NEXT_X, posY);
 	category.panel->add(lblBrightnessValue, sldBrightness->getX() + sldBrightness->getWidth() + 8, posY);
-	posY += lblBrightness->getHeight() + DISTANCE_NEXT_Y;
 
 	RefreshPanelDisplay();
 }
@@ -630,10 +1021,15 @@ void ExitPanelDisplay()
 	delete chkFrameskip;
 	delete sldRefresh;
 	delete lblFrameRate;
+	delete cboFpsRate;
+	delete chkFpsAdj;
+	delete sldFpsAdj;
+	delete txtFpsAdj;
 	delete lblBrightness;
 	delete sldBrightness;
 	delete lblBrightnessValue;
 	delete amigaScreenActionListener;
+	delete amigaScreenKeyListener;
 	delete chkManualCrop;
 	delete lblAmigaWidth;
 	delete sldAmigaWidth;
@@ -662,7 +1058,11 @@ void ExitPanelDisplay()
 	delete cboScreenmode;
 	delete lblFullscreen;
 	delete cboFullscreen;
-	delete chkVsync;
+
+	delete lblVSyncNative;
+	delete lblVSyncRtg;
+	delete cboVSyncNative;
+	delete cboVSyncRtg;
 
 	delete optSingle;
 	delete optDouble;
@@ -684,6 +1084,50 @@ void ExitPanelDisplay()
 	delete lblResolution;
 	delete cboResolution;
 	delete chkFilterLowRes;
+
+	delete lblResSwitch;
+	delete cboResSwitch;
+}
+
+void refresh_fps_options()
+{
+	TCHAR buffer[MAX_DPATH];
+	int rates[MAX_CHIPSET_REFRESH_TOTAL];
+	int v;
+	double d;
+
+	fps_options.clear();
+	v = 0;
+	chipset_refresh* selectcr = changed_prefs.ntscmode ? &changed_prefs.cr[CHIPSET_REFRESH_NTSC] : &changed_prefs.cr[CHIPSET_REFRESH_PAL];
+	for (int i = 0; i < MAX_CHIPSET_REFRESH_TOTAL; i++) {
+		struct chipset_refresh* cr = &changed_prefs.cr[i];
+		if (cr->rate > 0) {
+			_tcscpy(buffer, cr->label);
+			if (!buffer[0])
+				_stprintf(buffer, _T(":%d"), i);
+			//xSendDlgItemMessage(hDlg, IDC_RATE2BOX, CB_ADDSTRING, 0, (LPARAM)buffer);
+			fps_options.emplace_back(buffer);
+			d = changed_prefs.chipset_refreshrate;
+			if (abs(d) < 1)
+				d = currprefs.ntscmode ? 60.0 : 50.0;
+			if (selectcr && selectcr->index == cr->index)
+				changed_prefs.cr_selected = i;
+			rates[i] = v;
+			v++;
+		}
+	}
+
+	if (changed_prefs.cr_selected < 0 || changed_prefs.cr[changed_prefs.cr_selected].rate <= 0)
+		changed_prefs.cr_selected = CHIPSET_REFRESH_PAL;
+	selectcr = &changed_prefs.cr[changed_prefs.cr_selected];
+	cboFpsRate->setSelected(rates[changed_prefs.cr_selected]);
+	sldFpsAdj->setValue(selectcr->rate + 0.5);
+	_stprintf(buffer, _T("%.6f"), selectcr->rate);
+	txtFpsAdj->setText(std::string(buffer));
+	chkFpsAdj->setSelected(selectcr->locked);
+
+	txtFpsAdj->setEnabled(selectcr->locked != 0);
+	sldFpsAdj->setEnabled(selectcr->locked != 0);
 }
 
 void RefreshPanelDisplay()
@@ -695,6 +1139,8 @@ void RefreshPanelDisplay()
 	sldRefresh->setValue(changed_prefs.gfx_framerate);
 	lblFrameRate->setCaption(std::to_string(changed_prefs.gfx_framerate));
 	lblFrameRate->adjustSize();
+
+	refresh_fps_options();
 
 	sldBrightness->setValue(changed_prefs.gfx_luminance);
 	lblBrightnessValue->setCaption(std::to_string(changed_prefs.gfx_luminance));
@@ -748,7 +1194,21 @@ void RefreshPanelDisplay()
 	sldVOffset->setEnabled(changed_prefs.gfx_manual_crop);
 
 	chkBorderless->setSelected(changed_prefs.borderless);
-	chkVsync->setSelected(changed_prefs.gfx_apmode[0].gfx_vsync > 0);
+
+	int v = changed_prefs.gfx_apmode[0].gfx_vsync;
+	if (v < 0)
+		v = 5;
+	else if (v > 0) {
+		v = v + (changed_prefs.gfx_apmode[0].gfx_vsyncmode || !v ? 0 : 2);
+	}
+	cboVSyncNative->setSelected(v);
+
+	v = changed_prefs.gfx_apmode[1].gfx_vsync;
+	if (v < 0)
+		v = 2;
+	else if (v > 0)
+		v = 1;
+	cboVSyncRtg->setSelected(v);
 
 	sldHOffset->setValue(changed_prefs.gfx_horizontal_offset);
 	lblHOffsetValue->setCaption(std::to_string(changed_prefs.gfx_horizontal_offset));
@@ -768,6 +1228,13 @@ void RefreshPanelDisplay()
 	
 	chkAspect->setSelected(changed_prefs.gfx_correct_aspect);
 	chkFilterLowRes->setSelected(changed_prefs.gfx_lores_mode);
+
+	if (kmsdrm_detected)
+	{
+		changed_prefs.gfx_apmode[0].gfx_fullscreen = GFX_FULLWINDOW;
+		changed_prefs.gfx_apmode[1].gfx_fullscreen = GFX_FULLWINDOW;
+		cboScreenmode->setEnabled(false);
+	}
 
 	if (changed_prefs.gfx_apmode[0].gfx_fullscreen == GFX_WINDOW)
 	{
@@ -809,7 +1276,18 @@ void RefreshPanelDisplay()
 	}
 
 	cboScalingMethod->setSelected(changed_prefs.scaling_method + 1);
-	
+
+	if (changed_prefs.gfx_autoresolution == 0 || changed_prefs.gfx_autoresolution > 99)
+		cboResSwitch->setSelected(0);
+	else if (changed_prefs.gfx_autoresolution == 1)
+		cboResSwitch->setSelected(1);
+	else if (changed_prefs.gfx_autoresolution <= 10)
+		cboResSwitch->setSelected(2);
+	else if (changed_prefs.gfx_autoresolution <= 33)
+		cboResSwitch->setSelected(3);
+	else if (changed_prefs.gfx_autoresolution <= 99)
+		cboResSwitch->setSelected(4);
+
 	if (changed_prefs.gfx_vresolution == VRES_NONDOUBLE && changed_prefs.gfx_pscanlines == 0)
 	{
 		optSingle->setSelected(true);
@@ -849,6 +1327,18 @@ void RefreshPanelDisplay()
 		optIDouble3->setSelected(true);
 	
 	cboResolution->setSelected(changed_prefs.gfx_resolution);
+
+	bool isdouble = changed_prefs.gfx_vresolution > 0;
+	optSingle->setEnabled(!changed_prefs.gfx_autoresolution);
+	optDouble->setEnabled(!changed_prefs.gfx_autoresolution);
+	optScanlines->setEnabled(!changed_prefs.gfx_autoresolution);
+	optDouble2->setEnabled(!changed_prefs.gfx_autoresolution);
+	optDouble3->setEnabled(!changed_prefs.gfx_autoresolution);
+	optISingle->setEnabled(!changed_prefs.gfx_autoresolution && !isdouble);
+	optIDouble->setEnabled(!changed_prefs.gfx_autoresolution && isdouble);
+	optIDouble2->setEnabled(!changed_prefs.gfx_autoresolution && isdouble);
+	optIDouble3->setEnabled(!changed_prefs.gfx_autoresolution && isdouble);
+	cboResolution->setEnabled(!changed_prefs.gfx_autoresolution);
 }
 
 bool HelpPanelDisplay(std::vector<std::string>& helptext)
@@ -919,11 +1409,11 @@ bool HelpPanelDisplay(std::vector<std::string>& helptext)
 	helptext.emplace_back("don't care about the redraw on the screen. This option can also be useful to get");
 	helptext.emplace_back("to get some more games playable.");
 	helptext.emplace_back(" ");
-	helptext.emplace_back("\"Brightness\" - Allows adjustment of the output image brightness, from -200 to 200.");
+	helptext.emplace_back("\"FPS Adj.\" - This option allows you to specify a custom frame rate, instead of");
+	helptext.emplace_back("the default ones (PAL or NTSC). This can be useful if your monitor does not handle");
+	helptext.emplace_back("the exact refresh rate required, and you want to have perfect VSync");
 	helptext.emplace_back(" ");
-	helptext.emplace_back("\"Use SDL2 multi-threaded rendering\" - Enables multi-threaded drawing using SDL2.");
-	helptext.emplace_back("Provides a performance benefit, however not all systems support it.");
-    helptext.emplace_back("Disable this if you notice problems, like a black screen when starting emulation.");
+	helptext.emplace_back("\"Brightness\" - Allows adjustment of the output image brightness, from -200 to 200.");
 	helptext.emplace_back(" ");
 	helptext.emplace_back("\"Line Mode\" - These options define how the Amiga screen is drawn.");
 	helptext.emplace_back(" ");

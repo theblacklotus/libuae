@@ -1932,19 +1932,26 @@ static struct zfile *get_kickstart_filehandle(struct uae_prefs *p)
 	_tcscpy(tmprom, p->romfile);
 	_tcscpy(tmprom2, p->romfile);
 	if (f == NULL) {
-		_stprintf(tmprom2, _T("%s%s"), start_path_data.c_str(), p->romfile);
-		f = rom_fopen(tmprom2, _T("rb"), ZFD_NORMAL);
+#ifdef AMIBERRY
+		// don't check default paths if romfile is empty
+		if (p->romfile[0] != 0) {
+#endif
+			_stprintf(tmprom2, _T("%s/%s"), start_path_data.c_str(), p->romfile);
+			f = rom_fopen(tmprom2, _T("rb"), ZFD_NORMAL);
+#ifdef AMIBERRY
+		}
+#endif
 		if (f == NULL) {
-			_stprintf(tmprom2, _T("%sroms/kick.rom"), start_path_data.c_str());
+			_stprintf(tmprom2, _T("%s/roms/kick.rom"), start_path_data.c_str());
 			f = rom_fopen(tmprom2, _T("rb"), ZFD_NORMAL);
 			if (f == NULL) {
-				_stprintf(tmprom2, _T("%skick.rom"), start_path_data.c_str());
+				_stprintf(tmprom2, _T("%s/kick.rom"), start_path_data.c_str());
 				f = rom_fopen(tmprom2, _T("rb"), ZFD_NORMAL);
 				if (f == NULL) {
-					_stprintf(tmprom2, _T("%s../shared/rom/kick.rom"), start_path_data.c_str());
+					_stprintf(tmprom2, _T("%s/../shared/rom/kick.rom"), start_path_data.c_str());
 					f = rom_fopen(tmprom2, _T("rb"), ZFD_NORMAL);
 					if (f == NULL) {
-						_stprintf(tmprom2, _T("%s../System/rom/kick.rom"), start_path_data.c_str());
+						_stprintf(tmprom2, _T("%s/../System/rom/kick.rom"), start_path_data.c_str());
 						f = rom_fopen(tmprom2, _T("rb"), ZFD_NORMAL);
 						if (f == NULL) {
 							f = read_rom_name_guess(tmprom, tmprom2);
@@ -2654,6 +2661,13 @@ static void setmemorywidth(struct ramboard *mb, addrbank *ab)
 		for (int i = (ab->start >> 16); i < ((ab->start + ab->allocated_size) >> 16); i++) {
 			ce_banktype[i] = ce_banktype[0];
 		}
+	}
+	if (mb->fault) {
+		ab->baseaddr_direct_w = NULL;
+		ab->baseaddr_direct_r = NULL;
+		ab->lput = &dummy_lput;
+		ab->wput = &dummy_wput;
+		ab->bput = &dummy_bput;
 	}
 }
 

@@ -11,7 +11,7 @@
 #include "fsdb_host.h"
 #include "statusline.h"
 
-static gcn::ScrollArea* scrollArea;
+static gcn::ScrollArea* scrlMisc;
 static gcn::Window* grpMiscOptions;
 
 static gcn::CheckBox* chkAltTabRelease;
@@ -299,121 +299,199 @@ void InitPanelMisc(const config_category& category)
 	
 	chkStatusLine = new gcn::CheckBox("Status Line native");
 	chkStatusLine->setId("chkStatusLineNative");
+	chkStatusLine->setBaseColor(gui_base_color);
+	chkStatusLine->setBackgroundColor(gui_textbox_background_color);
+	chkStatusLine->setForegroundColor(gui_foreground_color);
 	chkStatusLine->addActionListener(miscActionListener);
 
 	chkStatusLineRtg = new gcn::CheckBox("Status Line RTG");
 	chkStatusLineRtg->setId("chkStatusLineRtg");
+	chkStatusLineRtg->setBaseColor(gui_base_color);
+	chkStatusLineRtg->setBackgroundColor(gui_textbox_background_color);
+	chkStatusLineRtg->setForegroundColor(gui_foreground_color);
 	chkStatusLineRtg->addActionListener(miscActionListener);
 
 	chkShowGUI = new gcn::CheckBox("Show GUI on startup");
 	chkShowGUI->setId("chkShowGUI");
+	chkShowGUI->setBaseColor(gui_base_color);
+	chkShowGUI->setBackgroundColor(gui_textbox_background_color);
+	chkShowGUI->setForegroundColor(gui_foreground_color);
 	chkShowGUI->addActionListener(miscActionListener);
 
 	chkMouseUntrap = new gcn::CheckBox("Untrap = middle button");
 	chkMouseUntrap->setId("chkMouseUntrap");
+	chkMouseUntrap->setBaseColor(gui_base_color);
+	chkMouseUntrap->setBackgroundColor(gui_textbox_background_color);
+	chkMouseUntrap->setForegroundColor(gui_foreground_color);
 	chkMouseUntrap->addActionListener(miscActionListener);
 
 	chkAltTabRelease = new gcn::CheckBox("Alt-Tab releases control");
 	chkAltTabRelease->setId("chkAltTabRelease");
+	chkAltTabRelease->setBaseColor(gui_base_color);
+	chkAltTabRelease->setBackgroundColor(gui_textbox_background_color);
+	chkAltTabRelease->setForegroundColor(gui_foreground_color);
 	chkAltTabRelease->addActionListener(miscActionListener);
 	
 	chkRetroArchQuit = new gcn::CheckBox("Use RetroArch Quit Button");
 	chkRetroArchQuit->setId("chkRetroArchQuit");
+	chkRetroArchQuit->setBaseColor(gui_base_color);
+	chkRetroArchQuit->setBackgroundColor(gui_textbox_background_color);
+	chkRetroArchQuit->setForegroundColor(gui_foreground_color);
 	chkRetroArchQuit->addActionListener(miscActionListener);
 
 	chkRetroArchMenu = new gcn::CheckBox("Use RetroArch Menu Button");
 	chkRetroArchMenu->setId("chkRetroArchMenu");
+	chkRetroArchMenu->setBaseColor(gui_base_color);
+	chkRetroArchMenu->setBackgroundColor(gui_textbox_background_color);
+	chkRetroArchMenu->setForegroundColor(gui_foreground_color);
 	chkRetroArchMenu->addActionListener(miscActionListener);
 
 	chkRetroArchReset = new gcn::CheckBox("Use RetroArch Reset Button");
 	chkRetroArchReset->setId("chkRetroArchReset");
+	chkRetroArchReset->setBaseColor(gui_base_color);
+	chkRetroArchReset->setBackgroundColor(gui_textbox_background_color);
+	chkRetroArchReset->setForegroundColor(gui_foreground_color);
 	chkRetroArchReset->addActionListener(miscActionListener);
 
 	chkMasterWP = new gcn::CheckBox("Master floppy write protection");
 	chkMasterWP->setId("chkMasterWP");
+	chkMasterWP->setBaseColor(gui_base_color);
+	chkMasterWP->setBackgroundColor(gui_textbox_background_color);
+	chkMasterWP->setForegroundColor(gui_foreground_color);
 	chkMasterWP->addActionListener(miscActionListener);
 
 	chkHDReadOnly = new gcn::CheckBox("Master harddrive write protection");
 	chkHDReadOnly->setId("chkHDReadOnly");
+	chkHDReadOnly->setBaseColor(gui_base_color);
+	chkHDReadOnly->setBackgroundColor(gui_textbox_background_color);
+	chkHDReadOnly->setForegroundColor(gui_foreground_color);
 	chkHDReadOnly->addActionListener(miscActionListener);
 	
 	chkClipboardSharing = new gcn::CheckBox("Clipboard sharing");
 	chkClipboardSharing->setId("chkClipboardSharing");
+	chkClipboardSharing->setBaseColor(gui_base_color);
+	chkClipboardSharing->setBackgroundColor(gui_textbox_background_color);
+	chkClipboardSharing->setForegroundColor(gui_foreground_color);
 	chkClipboardSharing->addActionListener(miscActionListener);
 
 	chkRCtrlIsRAmiga = new gcn::CheckBox("RCtrl = RAmiga");
 	chkRCtrlIsRAmiga->setId("chkRCtrlIsRAmiga");
+	chkRCtrlIsRAmiga->setBaseColor(gui_base_color);
+	chkRCtrlIsRAmiga->setBackgroundColor(gui_textbox_background_color);
+	chkRCtrlIsRAmiga->setForegroundColor(gui_foreground_color);
 	chkRCtrlIsRAmiga->addActionListener(miscActionListener);
 
 	chkMainAlwaysOnTop = new gcn::CheckBox("Always on top");
 	chkMainAlwaysOnTop->setId("chkMainAlwaysOnTop");
+	chkMainAlwaysOnTop->setBaseColor(gui_base_color);
+	chkMainAlwaysOnTop->setBackgroundColor(gui_textbox_background_color);
+	chkMainAlwaysOnTop->setForegroundColor(gui_foreground_color);
 	chkMainAlwaysOnTop->addActionListener(miscActionListener);
 
 	chkGuiAlwaysOnTop = new gcn::CheckBox("GUI Always on top");
 	chkGuiAlwaysOnTop->setId("chkGuiAlwaysOnTop");
+	chkGuiAlwaysOnTop->setBaseColor(gui_base_color);
+	chkGuiAlwaysOnTop->setBackgroundColor(gui_textbox_background_color);
+	chkGuiAlwaysOnTop->setForegroundColor(gui_foreground_color);
 	chkGuiAlwaysOnTop->addActionListener(miscActionListener);
 
 	chkSyncClock = new gcn::CheckBox("Synchronize clock");
 	chkSyncClock->setId("chkSyncClock");
+	chkSyncClock->setBaseColor(gui_base_color);
+	chkSyncClock->setBackgroundColor(gui_textbox_background_color);
+	chkSyncClock->setForegroundColor(gui_foreground_color);
 	chkSyncClock->addActionListener(miscActionListener);
 
 	chkResetDelay = new gcn::CheckBox("One second reboot pause");
 	chkResetDelay->setId("chkResetDelay");
+	chkResetDelay->setBaseColor(gui_base_color);
+	chkResetDelay->setBackgroundColor(gui_textbox_background_color);
+	chkResetDelay->setForegroundColor(gui_foreground_color);
 	chkResetDelay->addActionListener(miscActionListener);
 
 	chkFasterRTG = new gcn::CheckBox("Faster RTG");
 	chkFasterRTG->setId("chkFasterRTG");
+	chkFasterRTG->setBaseColor(gui_base_color);
+	chkFasterRTG->setBackgroundColor(gui_textbox_background_color);
+	chkFasterRTG->setForegroundColor(gui_foreground_color);
 	chkFasterRTG->addActionListener(miscActionListener);
 
 	chkAllowNativeCode = new gcn::CheckBox("Allow native code");
 	chkAllowNativeCode->setId("chkAllowNativeCode");
+	chkAllowNativeCode->setBaseColor(gui_base_color);
+	chkAllowNativeCode->setBackgroundColor(gui_textbox_background_color);
+	chkAllowNativeCode->setForegroundColor(gui_foreground_color);
 	chkAllowNativeCode->addActionListener(miscActionListener);
 
 	chkIllegalMem = new gcn::CheckBox("Log illegal memory accesses");
 	chkIllegalMem->setId("chkIllegalMem");
+	chkIllegalMem->setBaseColor(gui_base_color);
+	chkIllegalMem->setBackgroundColor(gui_textbox_background_color);
+	chkIllegalMem->setForegroundColor(gui_foreground_color);
 	chkIllegalMem->addActionListener(miscActionListener);
 
 	chkMinimizeInactive = new gcn::CheckBox("Minimize when focus is lost");
 	chkMinimizeInactive->setId("chkMinimizeInactive");
+	chkMinimizeInactive->setBaseColor(gui_base_color);
+	chkMinimizeInactive->setBackgroundColor(gui_textbox_background_color);
+	chkMinimizeInactive->setForegroundColor(gui_foreground_color);
 	chkMinimizeInactive->addActionListener(miscActionListener);
 
 	chkCaptureAlways = new gcn::CheckBox("Capture mouse when window is activated");
 	chkCaptureAlways->setId("chkCaptureAlways");
+	chkCaptureAlways->setBaseColor(gui_base_color);
+	chkCaptureAlways->setBackgroundColor(gui_textbox_background_color);
+	chkCaptureAlways->setForegroundColor(gui_foreground_color);
 	chkCaptureAlways->addActionListener(miscActionListener);
 
 	chkHideAutoconfig = new gcn::CheckBox("Hide all UAE autoconfig boards");
 	chkHideAutoconfig->setId("chkHideAutoconfig");
+	chkHideAutoconfig->setBaseColor(gui_base_color);
+	chkHideAutoconfig->setBackgroundColor(gui_textbox_background_color);
+	chkHideAutoconfig->setForegroundColor(gui_foreground_color);
 	chkHideAutoconfig->addActionListener(miscActionListener);
 
 	chkScsiDisable = new gcn::CheckBox("A600/A1200/A4000 IDE scsi.device disable");
 	chkScsiDisable->setId("chkScsiDisable");
+	chkScsiDisable->setBaseColor(gui_base_color);
+	chkScsiDisable->setBackgroundColor(gui_textbox_background_color);
+	chkScsiDisable->setForegroundColor(gui_foreground_color);
 	chkScsiDisable->addActionListener(miscActionListener);
 
 	chkWarpModeReset = new gcn::CheckBox("Warp mode reset");
 	chkWarpModeReset->setId("chkWarpModeReset");
+	chkWarpModeReset->setBaseColor(gui_base_color);
+	chkWarpModeReset->setBackgroundColor(gui_textbox_background_color);
+	chkWarpModeReset->setForegroundColor(gui_foreground_color);
 	chkWarpModeReset->addActionListener(miscActionListener);
 	
 	lblNumLock = new gcn::Label("NumLock:");
 	lblNumLock->setAlignment(gcn::Graphics::RIGHT);
 	cboKBDLed_num = new gcn::DropDown(&KBDLedList);
-	cboKBDLed_num->setBaseColor(gui_baseCol);
-	cboKBDLed_num->setBackgroundColor(colTextboxBackground);
+	cboKBDLed_num->setBaseColor(gui_base_color);
+	cboKBDLed_num->setBackgroundColor(gui_textbox_background_color);
+	cboKBDLed_num->setForegroundColor(gui_foreground_color);
+	cboKBDLed_num->setSelectionColor(gui_selection_color);
 	cboKBDLed_num->setId("cboNumlock");
 	cboKBDLed_num->addActionListener(miscActionListener);
 
 	lblScrLock = new gcn::Label("ScrollLock:");
 	lblScrLock->setAlignment(gcn::Graphics::RIGHT);
 	cboKBDLed_scr = new gcn::DropDown(&KBDLedList);
-	cboKBDLed_scr->setBaseColor(gui_baseCol);
-	cboKBDLed_scr->setBackgroundColor(colTextboxBackground);
+	cboKBDLed_scr->setBaseColor(gui_base_color);
+	cboKBDLed_scr->setBackgroundColor(gui_textbox_background_color);
+	cboKBDLed_scr->setForegroundColor(gui_foreground_color);
+	cboKBDLed_scr->setSelectionColor(gui_selection_color);
 	cboKBDLed_scr->setId("cboScrolllock");
 	cboKBDLed_scr->addActionListener(miscActionListener);
 
 	lblCapLock = new gcn::Label("CapsLock:");
 	lblCapLock->setAlignment(gcn::Graphics::LEFT);
 	cboKBDLed_cap = new gcn::DropDown(&KBDLedList);
-	cboKBDLed_cap->setBaseColor(gui_baseCol);
-	cboKBDLed_cap->setBackgroundColor(colTextboxBackground);
+	cboKBDLed_cap->setBaseColor(gui_base_color);
+	cboKBDLed_cap->setBackgroundColor(gui_textbox_background_color);
+	cboKBDLed_cap->setForegroundColor(gui_foreground_color);
+	cboKBDLed_cap->setSelectionColor(gui_selection_color);
 	cboKBDLed_cap->setId("cboCapsLock");
 	cboKBDLed_cap->addActionListener(miscActionListener);
 
@@ -422,14 +500,18 @@ void InitPanelMisc(const config_category& category)
 	txtOpenGUI = new gcn::TextField();
 	txtOpenGUI->setEnabled(false);
 	txtOpenGUI->setSize(120, TEXTFIELD_HEIGHT);
-	txtOpenGUI->setBackgroundColor(colTextboxBackground);
+	txtOpenGUI->setBaseColor(gui_base_color);
+	txtOpenGUI->setBackgroundColor(gui_textbox_background_color);
+	txtOpenGUI->setForegroundColor(gui_foreground_color);
 	cmdKeyOpenGUI = new gcn::Button("...");
 	cmdKeyOpenGUI->setId("cmdKeyOpenGUI");
 	cmdKeyOpenGUI->setSize(SMALL_BUTTON_WIDTH, SMALL_BUTTON_HEIGHT);
-	cmdKeyOpenGUI->setBaseColor(gui_baseCol);
+	cmdKeyOpenGUI->setBaseColor(gui_base_color);
+	cmdKeyOpenGUI->setForegroundColor(gui_foreground_color);
 	cmdKeyOpenGUI->addActionListener(miscActionListener);
 	cmdKeyOpenGUIClear = new gcn::ImageButton(prefix_with_data_path("delete.png"));
-	cmdKeyOpenGUIClear->setBaseColor(gui_baseCol);
+	cmdKeyOpenGUIClear->setBaseColor(gui_base_color);
+	cmdKeyOpenGUIClear->setForegroundColor(gui_foreground_color);
 	cmdKeyOpenGUIClear->setSize(SMALL_BUTTON_WIDTH, SMALL_BUTTON_HEIGHT);
 	cmdKeyOpenGUIClear->setId("cmdKeyOpenGUIClear");
 	cmdKeyOpenGUIClear->addActionListener(miscActionListener);
@@ -439,14 +521,18 @@ void InitPanelMisc(const config_category& category)
 	txtKeyForQuit = new gcn::TextField();
 	txtKeyForQuit->setEnabled(false);
 	txtKeyForQuit->setSize(120, TEXTFIELD_HEIGHT);
-	txtKeyForQuit->setBackgroundColor(colTextboxBackground);
+	txtKeyForQuit->setBaseColor(gui_base_color);
+	txtKeyForQuit->setBackgroundColor(gui_textbox_background_color);
+	txtKeyForQuit->setForegroundColor(gui_foreground_color);
 	cmdKeyForQuit = new gcn::Button("...");
 	cmdKeyForQuit->setId("cmdKeyForQuit");
 	cmdKeyForQuit->setSize(SMALL_BUTTON_WIDTH, SMALL_BUTTON_HEIGHT);
-	cmdKeyForQuit->setBaseColor(gui_baseCol);
+	cmdKeyForQuit->setBaseColor(gui_base_color);
+	cmdKeyForQuit->setForegroundColor(gui_foreground_color);
 	cmdKeyForQuit->addActionListener(miscActionListener);
 	cmdKeyForQuitClear = new gcn::ImageButton(prefix_with_data_path("delete.png"));
-	cmdKeyForQuitClear->setBaseColor(gui_baseCol);
+	cmdKeyForQuitClear->setBaseColor(gui_base_color);
+	cmdKeyForQuitClear->setForegroundColor(gui_foreground_color);
 	cmdKeyForQuitClear->setSize(SMALL_BUTTON_WIDTH, SMALL_BUTTON_HEIGHT);
 	cmdKeyForQuitClear->setId("cmdKeyForQuitClear");
 	cmdKeyForQuitClear->addActionListener(miscActionListener);
@@ -456,14 +542,18 @@ void InitPanelMisc(const config_category& category)
 	txtKeyActionReplay = new gcn::TextField();
 	txtKeyActionReplay->setEnabled(false);
 	txtKeyActionReplay->setSize(120, TEXTFIELD_HEIGHT);
-	txtKeyActionReplay->setBackgroundColor(colTextboxBackground);
+	txtKeyActionReplay->setBaseColor(gui_base_color);
+	txtKeyActionReplay->setBackgroundColor(gui_textbox_background_color);
+	txtKeyActionReplay->setForegroundColor(gui_foreground_color);
 	cmdKeyActionReplay = new gcn::Button("...");
 	cmdKeyActionReplay->setId("cmdKeyActionReplay");
 	cmdKeyActionReplay->setSize(SMALL_BUTTON_WIDTH, SMALL_BUTTON_HEIGHT);
-	cmdKeyActionReplay->setBaseColor(gui_baseCol);
+	cmdKeyActionReplay->setBaseColor(gui_base_color);
+	cmdKeyActionReplay->setForegroundColor(gui_foreground_color);
 	cmdKeyActionReplay->addActionListener(miscActionListener);
 	cmdKeyActionReplayClear = new gcn::ImageButton(prefix_with_data_path("delete.png"));
-	cmdKeyActionReplayClear->setBaseColor(gui_baseCol);
+	cmdKeyActionReplayClear->setBaseColor(gui_base_color);
+	cmdKeyActionReplayClear->setForegroundColor(gui_foreground_color);
 	cmdKeyActionReplayClear->setSize(SMALL_BUTTON_WIDTH, SMALL_BUTTON_HEIGHT);
 	cmdKeyActionReplayClear->setId("cmdKeyActionReplayClear");
 	cmdKeyActionReplayClear->addActionListener(miscActionListener);
@@ -473,14 +563,18 @@ void InitPanelMisc(const config_category& category)
 	txtKeyFullScreen = new gcn::TextField();
 	txtKeyFullScreen->setEnabled(false);
 	txtKeyFullScreen->setSize(120, TEXTFIELD_HEIGHT);
-	txtKeyFullScreen->setBackgroundColor(colTextboxBackground);
+	txtKeyFullScreen->setBaseColor(gui_base_color);
+	txtKeyFullScreen->setBackgroundColor(gui_textbox_background_color);
+	txtKeyFullScreen->setForegroundColor(gui_foreground_color);
 	cmdKeyFullScreen = new gcn::Button("...");
 	cmdKeyFullScreen->setId("cmdKeyFullScreen");
 	cmdKeyFullScreen->setSize(SMALL_BUTTON_WIDTH, SMALL_BUTTON_HEIGHT);
-	cmdKeyFullScreen->setBaseColor(gui_baseCol);
+	cmdKeyFullScreen->setBaseColor(gui_base_color);
+	cmdKeyFullScreen->setForegroundColor(gui_foreground_color);
 	cmdKeyFullScreen->addActionListener(miscActionListener);
 	cmdKeyFullScreenClear = new gcn::ImageButton(prefix_with_data_path("delete.png"));
-	cmdKeyFullScreenClear->setBaseColor(gui_baseCol);
+	cmdKeyFullScreenClear->setBaseColor(gui_base_color);
+	cmdKeyFullScreenClear->setForegroundColor(gui_foreground_color);
 	cmdKeyFullScreenClear->setSize(SMALL_BUTTON_WIDTH, SMALL_BUTTON_HEIGHT);
 	cmdKeyFullScreenClear->setId("cmdKeyFullScreenClear");
 	cmdKeyFullScreenClear->addActionListener(miscActionListener);
@@ -490,21 +584,26 @@ void InitPanelMisc(const config_category& category)
 	txtKeyMinimize = new gcn::TextField();
 	txtKeyMinimize->setEnabled(false);
 	txtKeyMinimize->setSize(120, TEXTFIELD_HEIGHT);
-	txtKeyMinimize->setBackgroundColor(colTextboxBackground);
+	txtKeyMinimize->setBaseColor(gui_base_color);
+	txtKeyMinimize->setBackgroundColor(gui_textbox_background_color);
+	txtKeyMinimize->setForegroundColor(gui_foreground_color);
 	cmdKeyMinimize = new gcn::Button("...");
 	cmdKeyMinimize->setId("cmdKeyMinimize");
 	cmdKeyMinimize->setSize(SMALL_BUTTON_WIDTH, SMALL_BUTTON_HEIGHT);
-	cmdKeyMinimize->setBaseColor(gui_baseCol);
+	cmdKeyMinimize->setBaseColor(gui_base_color);
+	cmdKeyMinimize->setForegroundColor(gui_foreground_color);
 	cmdKeyMinimize->addActionListener(miscActionListener);
 	cmdKeyMinimizeClear = new gcn::ImageButton(prefix_with_data_path("delete.png"));
-	cmdKeyMinimizeClear->setBaseColor(gui_baseCol);
+	cmdKeyMinimizeClear->setBaseColor(gui_base_color);
+	cmdKeyMinimizeClear->setForegroundColor(gui_foreground_color);
 	cmdKeyMinimizeClear->setSize(SMALL_BUTTON_WIDTH, SMALL_BUTTON_HEIGHT);
 	cmdKeyMinimizeClear->setId("cmdKeyMinimizeClear");
 	cmdKeyMinimizeClear->addActionListener(miscActionListener);
 
 	int posY = DISTANCE_BORDER;
 	grpMiscOptions->setPosition(DISTANCE_BORDER, DISTANCE_BORDER);
-	grpMiscOptions->setBaseColor(gui_baseCol);
+	grpMiscOptions->setBaseColor(gui_base_color);
+	grpMiscOptions->setForegroundColor(gui_foreground_color);
 	grpMiscOptions->add(chkMouseUntrap, DISTANCE_BORDER, posY);
 	posY += chkMouseUntrap->getHeight() + DISTANCE_NEXT_Y;
 	grpMiscOptions->add(chkShowGUI, DISTANCE_BORDER, posY);
@@ -565,20 +664,21 @@ void InitPanelMisc(const config_category& category)
 	grpMiscOptions->add(chkRetroArchMenu, DISTANCE_BORDER, posY);
 	posY += chkRetroArchMenu->getHeight() + DISTANCE_NEXT_Y;
 	grpMiscOptions->add(chkRetroArchReset, DISTANCE_BORDER, posY);
-
+	grpMiscOptions->setTitleBarHeight(1);
 	grpMiscOptions->setSize(category.panel->getWidth() - category.panel->getWidth() / 3 - 40, 800);
 
-	scrollArea = new gcn::ScrollArea(grpMiscOptions);
-	scrollArea->setId("scrlMisc");
-	scrollArea->setBackgroundColor(gui_baseCol);
-	scrollArea->setBaseColor(gui_baseCol);
-	scrollArea->setWidth(category.panel->getWidth() - (category.panel->getWidth() / 3) - 25);
-	scrollArea->setHeight(600);
-	scrollArea->setBorderSize(1);
-	scrollArea->setFocusable(true);
-	category.panel->add(scrollArea, DISTANCE_BORDER, DISTANCE_BORDER);
+	scrlMisc = new gcn::ScrollArea(grpMiscOptions);
+	scrlMisc->setId("scrlMisc");
+	scrlMisc->setBackgroundColor(gui_base_color);
+	scrlMisc->setBaseColor(gui_base_color);
+	scrlMisc->setForegroundColor(gui_foreground_color);
+	scrlMisc->setWidth(category.panel->getWidth() - (category.panel->getWidth() / 3) - 25);
+	scrlMisc->setHeight(600);
+	scrlMisc->setBorderSize(1);
+	scrlMisc->setFocusable(true);
+	category.panel->add(scrlMisc, DISTANCE_BORDER, DISTANCE_BORDER);
 
-	const auto column2_x = scrollArea->getWidth() + 20;
+	const auto column2_x = scrlMisc->getWidth() + 20;
 	posY = DISTANCE_BORDER;
 	
 	category.panel->add(lblOpenGUI, column2_x, posY);
@@ -692,7 +792,7 @@ void ExitPanelMisc()
 	delete miscActionListener;
 
 	delete grpMiscOptions;
-	delete scrollArea;
+	delete scrlMisc;
 }
 
 void RefreshPanelMisc()
@@ -746,23 +846,101 @@ void RefreshPanelMisc()
 bool HelpPanelMisc(std::vector<std::string>& helptext)
 {
 	helptext.clear();
-	helptext.emplace_back("\"Status Line\" Shows/Hides the status line indicator.");
-	helptext.emplace_back("The first value in the status line shows the idle time of the CPU in %,");
-	helptext.emplace_back("the second value is the current frame rate.");
-	helptext.emplace_back("When you have a HDD in your Amiga emulation, the HD indicator shows read (blue) and write");
-	helptext.emplace_back("(red) access to the HDD. The next values are showing the track number for each disk drive");
-	helptext.emplace_back("and indicates disk access.");
-	helptext.emplace_back(" ");
-	helptext.emplace_back("When you deactivate the option \"Show GUI on startup\" and use this configuration");
-	helptext.emplace_back("by specifying it with the command line parameter \"-config=<file>\", ");
-	helptext.emplace_back("the emulation starts directly without showing the GUI.");
-	helptext.emplace_back(" ");
-	helptext.emplace_back("\"Master floppy drive protection\" will disable all write access to floppy disks.");
-	helptext.emplace_back(" ");
-	helptext.emplace_back("You can set some of the keyboard LEDs to react on drive activity, using the relevant options.");
-	helptext.emplace_back(" ");
-	helptext.emplace_back("Finally, you can assign the desired hotkeys to Open the GUI, Quit the emulator,");
-	helptext.emplace_back("open Action Replay/HRTMon or toggle Fullscreen mode ON/OFF.");
+        helptext.emplace_back("In this panel you can control various emulator options that aren't covered by any of");
+        helptext.emplace_back("the previous panels. Changes made here can be saved to a .uae config file and will");
+        helptext.emplace_back("override any defaults that may exist in the amiberry.conf file. The naming of these");
+        helptext.emplace_back("options makes their usage reasonably apparent, however they are detailed in full");
+        helptext.emplace_back("below for further clarity.");
+        helptext.emplace_back(" ");
+        helptext.emplace_back("On the right of this panel you can assign some common keys or buttons, for use with");
+        helptext.emplace_back("the emulation control:");
+        helptext.emplace_back(" ");
+        helptext.emplace_back("- Open GUI: The key to open the main Amiberry GUI. The F12 key is the default.");
+        helptext.emplace_back("- Quit Key: A key to quit Amiberry immediately. No default is set.");
+        helptext.emplace_back("- Action Replay: A key to open Action Replay/HRTmon. The Pause key is the default.");
+        helptext.emplace_back("- FullScreen: A key to toggle Fullscreen/Fullwindow/Windowed mode. No default is set.");
+        helptext.emplace_back("- Minimize: A key to minimize Amiberry. No default is set.");
+        helptext.emplace_back(" ");
+        helptext.emplace_back("Below that, you can assign your keyboard's LEDs to blink and indicate the activity");
+        helptext.emplace_back("and status of various functions within the emulation. The available functions are:");
+        helptext.emplace_back(" ");
+        helptext.emplace_back("- Power: Power LED (on/off)");
+        helptext.emplace_back("- DF0-DF3: drive activity (will blink when the drive is reading/writing)");
+        helptext.emplace_back("- HD: Hard Drive activity (will blink when the drive is reading/writing)");
+        helptext.emplace_back("- CD: CD Drive activity (will blink when the CD drive is reading)");
+        helptext.emplace_back(" ");
+        helptext.emplace_back("The descriptions of the various emulator options available here are;");
+        helptext.emplace_back(" ");
+        helptext.emplace_back("- Untrap = middle button: This option enables the use of the mouse middle button to");
+        helptext.emplace_back("  release control of the mouse pointer in Amiberry. If enabled, the middle mouse");
+        helptext.emplace_back("  button cannot be used under AmigaOS.");
+        helptext.emplace_back(" ");
+        helptext.emplace_back("- Show GUI on startup: This option controls if the GUI should be shown on startup,");
+        helptext.emplace_back("  when a configuration file is loaded. If you want to start emulating immediately");
+        helptext.emplace_back("  when loading a config file, you can disable this option.");
+        helptext.emplace_back(" ");
+        helptext.emplace_back("- Always on top: Set Amiberry window to be always on top of other windows.");
+        helptext.emplace_back(" ");
+        helptext.emplace_back("- GUI Always on top: Set Amiberry GUI window to be always on top of other windows.");
+        helptext.emplace_back(" ");
+        helptext.emplace_back("- Synchronize clock: Syncs the Amiga clock to the host time.");
+        helptext.emplace_back(" ");
+        helptext.emplace_back("- One second reboot pause: This option inserts a one-second delay, during reboots.");
+        helptext.emplace_back("  Useful if the emulation is too fast, and you want to enter the Early Startup Menu");
+        helptext.emplace_back("  by holding down both mouse buttons.");
+        helptext.emplace_back(" ");
+        helptext.emplace_back("- Faster RTG: This option will skip parts of the custom chipset emulation, when RTG");
+        helptext.emplace_back("  modes are active. This will help performance with RTG modes, and is the default.");
+        helptext.emplace_back(" ");
+        helptext.emplace_back("- Clipboard sharing: This option allows you to share the clipboard between AmigaOS");
+        helptext.emplace_back("  and the host OS, and you can copy/paste text between the two if this is enabled.");
+        helptext.emplace_back(" ");
+        helptext.emplace_back("- Allow native code: This option enables the support for using \"host-run\" and other");
+        helptext.emplace_back("  similar tools, to launch host commands from inside the emulated system. Since this");
+        helptext.emplace_back("  can also be a security risk, it's disabled by default.");
+        helptext.emplace_back(" ");
+        helptext.emplace_back("The Status Line displays information about the emulation activity like sound buffer");
+        helptext.emplace_back("and CPU usage, FPS, and disk activity, and on some platforms the temperature of the");
+        helptext.emplace_back("SoC/board. You can use the following two options to enable/disable this feature;");
+        helptext.emplace_back(" ");
+        helptext.emplace_back("- Status Line native: Shows the status line when native (PAL/NTSC) screens are open.");
+        helptext.emplace_back("- Status Line RTG: Same as the native option above, this will show the status line");
+        helptext.emplace_back("  in RTG modes. If you want it always visible, you can enable both options.");
+        helptext.emplace_back(" ");
+        helptext.emplace_back("- Log illegal memory accesses: If enabled, then illegal memory accesses from the");
+        helptext.emplace_back("  emulated environment will be logged in the logfile (if that is enabled).");
+        helptext.emplace_back(" ");
+        helptext.emplace_back("- Minimize when focus is lost: If enabled, when Amiberry loses focus it will then");
+        helptext.emplace_back("  automatically minimize it's window.");
+        helptext.emplace_back(" ");
+        helptext.emplace_back("- Master floppy write protection: This option allows you to centrally write-protect");
+        helptext.emplace_back("  all floppy images, to avoid accidentally writing something to them.");
+        helptext.emplace_back(" ");
+        helptext.emplace_back("- Master harddrive write protection: Same as the above option, but for hard drives.");
+        helptext.emplace_back(" ");
+        helptext.emplace_back("- Hide all UAE autoconfig boards: If enabled all UAE-specific boards will be hidden");
+        helptext.emplace_back("  from the system in emulation.");
+        helptext.emplace_back(" ");
+        helptext.emplace_back("- RCtrl = RAmiga: Use the RCtrl as the RAmiga key, in lieu of Right Windows key");
+        helptext.emplace_back(" ");
+        helptext.emplace_back("- Capture mouse when window is activated: If this option is enabled, the mouse will");
+        helptext.emplace_back("  be automatically captured if the Amiberry window is selected.");
+        helptext.emplace_back(" ");
+        helptext.emplace_back("- A600/A1200/A4000 IDE scsi.device disabled: This option will disable the internal");
+        helptext.emplace_back("  IDE scsi.device for those Amiga models, making it faster to boot up.");
+        helptext.emplace_back(" ");
+        helptext.emplace_back("- Alt-Tab releases control: When enabled, you can use Alt-Tab to release control");
+        helptext.emplace_back("  from Amiberry. If enabled, that key combination cannot be used under AmigaOS.");
+        helptext.emplace_back(" ");
+        helptext.emplace_back("- Warp mode reset: If enabled, \"Warp mode\" is used to speed-up the reset process.");
+        helptext.emplace_back(" ");
+        helptext.emplace_back("If a valid RetroArch config is found by Amiberry, the following options apply;");
+        helptext.emplace_back(" ");
+        helptext.emplace_back("- Use RetroArch Quit button: If enabled, a retroarch mapping for Quit will be valid.");
+        helptext.emplace_back("- Use RetroArch Menu button: Same as above for retroarch mapping for Opening the GUI");
+        helptext.emplace_back("- Use RetroArch Reset button: Same as above for the retroarch mapping for Resetting");
+        helptext.emplace_back("  the emulation.");
+        helptext.emplace_back(" ");
 
 	return true;
 }

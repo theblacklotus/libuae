@@ -74,11 +74,11 @@ static void AdjustDropDownControls()
 	bIgnoreListChange = true;
 
 	cboWhdload->clearSelected();
-	if (!whdload_filename.empty())
+	if (!whdload_prefs.whdload_filename.empty())
 	{
 		for (auto i = 0; i < static_cast<int>(lstMRUWhdloadList.size()); ++i)
 		{
-			if (lstMRUWhdloadList[i] == whdload_filename)
+			if (lstMRUWhdloadList[i] == whdload_prefs.whdload_filename)
 			{
 				cboWhdload->setSelected(i);
 				break;
@@ -94,81 +94,105 @@ class WHDLoadActionListener : public gcn::ActionListener
 public:
 	void action(const gcn::ActionEvent& actionEvent) override
 	{
-		//---------------------------------------
-		// WHDLoad file from list selected
-		//---------------------------------------
-		if (!bIgnoreListChange)
+		const auto source = actionEvent.getSource();
+		if (source == cboWhdload)
 		{
-			if (actionEvent.getSource() == cboWhdload)
+			//---------------------------------------
+			// WHDLoad file from list selected
+			//---------------------------------------
+			if (!bIgnoreListChange)
 			{
 				const auto idx = cboWhdload->getSelected();
 
 				if (idx < 0)
 				{
-					whdload_filename = "";
+					whdload_prefs.whdload_filename = "";
 				}
 				else
 				{
 					const auto element = get_full_path_from_disk_list(whdloadFileList.getElementAt(idx));
-					if (element != whdload_filename)
+					if (element != whdload_prefs.whdload_filename)
 					{
-						whdload_filename.assign(element);
+						whdload_prefs.whdload_filename.assign(element);
 						lstMRUWhdloadList.erase(lstMRUWhdloadList.begin() + idx);
-						lstMRUWhdloadList.insert(lstMRUWhdloadList.begin(), whdload_filename);
+						lstMRUWhdloadList.insert(lstMRUWhdloadList.begin(), whdload_prefs.whdload_filename);
 						bIgnoreListChange = true;
 						cboWhdload->setSelected(0);
 						bIgnoreListChange = false;
 					}
-					whdload_auto_prefs(&changed_prefs, whdload_filename.c_str());
+					whdload_auto_prefs(&changed_prefs, whdload_prefs.whdload_filename.c_str());
+					SetLastActiveConfig(whdload_prefs.whdload_filename.c_str());
 				}
 				refresh_all_panels();
 			}
+		}
+		else if (source == cmdWhdloadEject)
+		{
+			//---------------------------------------
+			// Eject WHDLoad file
+			//---------------------------------------
+			whdload_prefs.whdload_filename = "";
+			refresh_all_panels();
+		}
+		else if (source == cmdWhdloadSelect)
+		{
+			std::string tmp;
+			if (!whdload_prefs.whdload_filename.empty())
+				tmp = whdload_prefs.whdload_filename;
+			else
+				tmp = get_whdload_arch_path();
+
+			tmp = SelectFile("Select WHDLoad LHA file", tmp, whdload_filter);
+			if (!tmp.empty())
+			{
+				whdload_prefs.whdload_filename.assign(tmp);
+				add_file_to_mru_list(lstMRUWhdloadList, whdload_prefs.whdload_filename);
+				RefreshWhdListModel();
+				whdload_auto_prefs(&changed_prefs, whdload_prefs.whdload_filename.c_str());
+
+				AdjustDropDownControls();
+			}
+			cmdWhdloadSelect->requestFocus();
+			refresh_all_panels();
+		}
+		else if (source == cboSlaves)
+		{
+			if (cboSlaves->getSelected() >= 0)
+			{
+				whdload_prefs.selected_slave = whdload_prefs.slaves[cboSlaves->getSelected()];
+				txtSlaveDataPath->setText(whdload_prefs.selected_slave.data_path.empty() ? "" : whdload_prefs.selected_slave.data_path);
+				create_startup_sequence();
+			}
+		}
+		else if (source == cmdCustomFields)
+		{
+			ShowCustomFields();
+			cmdCustomFields->requestFocus();
+		}
+		else if (source == chkButtonWait)
+		{
+			whdload_prefs.button_wait = chkButtonWait->isSelected();
+			create_startup_sequence();
+		}
+		else if (source == chkShowSplash)
+		{
+			whdload_prefs.show_splash = chkShowSplash->isSelected();
+			create_startup_sequence();
+		}
+		else if (source == chkWriteCache)
+		{
+			whdload_prefs.write_cache = chkWriteCache->isSelected();
+			create_startup_sequence();
+		}
+		else if (source == chkQuitOnExit)
+		{
+			whdload_prefs.quit_on_exit = chkQuitOnExit->isSelected();
+			create_startup_sequence();
 		}
 	}
 };
 
 static WHDLoadActionListener* whdloadActionListener;
-
-class WHDLoadButtonActionListener : public gcn::ActionListener
-{
-public:
-	void action(const gcn::ActionEvent& actionEvent) override
-	{
-		if (actionEvent.getSource() == cmdWhdloadEject)
-		{
-			//---------------------------------------
-			// Eject WHDLoad file
-			//---------------------------------------
-			whdload_filename = "";
-		}
-		else if (actionEvent.getSource() == cmdWhdloadSelect)
-		{
-			std::string tmp;
-			if (!whdload_filename.empty())
-				tmp = whdload_filename;
-			else
-				tmp = get_whdload_arch_path();
-
-			tmp = SelectFile("Select WHDLoad LHA file", tmp, whdload_filter);
-			{
-				whdload_filename.assign(tmp);
-				add_file_to_mru_list(lstMRUWhdloadList, whdload_filename);
-				RefreshWhdListModel();
-				whdload_auto_prefs(&changed_prefs, whdload_filename.c_str());
-
-				AdjustDropDownControls();
-			}
-			cmdWhdloadSelect->requestFocus();
-		}
-		else if (actionEvent.getSource() == cmdCustomFields)
-		{
-			ShowCustomFields();
-		}
-		refresh_all_panels();
-	}
-};
-
-static WHDLoadButtonActionListener* whdloadButtonActionListener;
 
 void InitPanelWHDLoad(const struct config_category& category)
 {
@@ -177,78 +201,128 @@ void InitPanelWHDLoad(const struct config_category& category)
 	constexpr int textfield_width = 350;
 
 	whdloadActionListener = new WHDLoadActionListener();
-	whdloadButtonActionListener = new WHDLoadButtonActionListener();
 
 	lblWhdload = new gcn::Label("WHDLoad auto-config:");
 	cboWhdload = new gcn::DropDown(&whdloadFileList);
 	cboWhdload->setSize(category.panel->getWidth() - 2 * DISTANCE_BORDER, cboWhdload->getHeight());
-	cboWhdload->setBaseColor(gui_baseCol);
-	cboWhdload->setBackgroundColor(colTextboxBackground);
+	cboWhdload->setBaseColor(gui_base_color);
+	cboWhdload->setBackgroundColor(gui_textbox_background_color);
+	cboWhdload->setForegroundColor(gui_foreground_color);
+	cboWhdload->setSelectionColor(gui_selection_color);
 	cboWhdload->setId("cboWhdload");
 	cboWhdload->addActionListener(whdloadActionListener);
 
 	cmdWhdloadEject = new gcn::Button("Eject");
 	cmdWhdloadEject->setSize(SMALL_BUTTON_WIDTH * 2, SMALL_BUTTON_HEIGHT);
-	cmdWhdloadEject->setBaseColor(gui_baseCol);
+	cmdWhdloadEject->setBaseColor(gui_base_color);
+	cmdWhdloadEject->setForegroundColor(gui_foreground_color);
 	cmdWhdloadEject->setId("cmdWhdloadEject");
-	cmdWhdloadEject->addActionListener(whdloadButtonActionListener);
+	cmdWhdloadEject->addActionListener(whdloadActionListener);
 
 	cmdWhdloadSelect = new gcn::Button("Select file");
 	cmdWhdloadSelect->setSize(BUTTON_WIDTH + 10, SMALL_BUTTON_HEIGHT);
-	cmdWhdloadSelect->setBaseColor(gui_baseCol);
+	cmdWhdloadSelect->setBaseColor(gui_base_color);
+	cmdWhdloadSelect->setForegroundColor(gui_foreground_color);
 	cmdWhdloadSelect->setId("cmdWhdloadSelect");
-	cmdWhdloadSelect->addActionListener(whdloadButtonActionListener);
+	cmdWhdloadSelect->addActionListener(whdloadActionListener);
 
 	// WHDLoad options
 	lblGameName = new gcn::Label("Game Name:");
 	txtGameName = new gcn::TextField();
+	txtGameName->setId("txtGameName");
 	txtGameName->setSize(textfield_width, TEXTFIELD_HEIGHT);
-	txtGameName->setBackgroundColor(colTextboxBackground);
+	txtGameName->setBaseColor(gui_base_color);
+	txtGameName->setBackgroundColor(gui_textbox_background_color);
+	txtGameName->setForegroundColor(gui_foreground_color);
 
 	lblVariantUuid = new gcn::Label("UUID:");
 	txtVariantUuid = new gcn::TextField();
+	txtVariantUuid->setId("txtVariantUuid");
 	txtVariantUuid->setSize(textfield_width, TEXTFIELD_HEIGHT);
-	txtVariantUuid->setBackgroundColor(colTextboxBackground);
+	txtVariantUuid->setBaseColor(gui_base_color);
+	txtVariantUuid->setBackgroundColor(gui_textbox_background_color);
+	txtVariantUuid->setForegroundColor(gui_foreground_color);
 
 	lblSlaveDefault = new gcn::Label("Slave Default:");
 	txtSlaveDefault = new gcn::TextField();
+	txtSlaveDefault->setId("txtSlaveDefault");
 	txtSlaveDefault->setSize(textfield_width, TEXTFIELD_HEIGHT);
-	txtSlaveDefault->setBackgroundColor(colTextboxBackground);
+	txtSlaveDefault->setBaseColor(gui_base_color);
+	txtSlaveDefault->setBackgroundColor(gui_textbox_background_color);
+	txtSlaveDefault->setForegroundColor(gui_foreground_color);
 
 	chkSlaveLibraries = new gcn::CheckBox("Slave Libraries");
+	chkSlaveLibraries->setId("chkSlaveLibraries");
+	chkSlaveLibraries->setBaseColor(gui_base_color);
+	chkSlaveLibraries->setBackgroundColor(gui_textbox_background_color);
+	chkSlaveLibraries->setForegroundColor(gui_foreground_color);
 
 	lblSlaves = new gcn::Label("Slaves:");
 	cboSlaves = new gcn::DropDown(&slaves_list);
+	cboSlaves->setId("cboSlaves");
 	cboSlaves->setSize(textfield_width, cboSlaves->getHeight());
-	cboSlaves->setBaseColor(gui_baseCol);
-	cboSlaves->setBackgroundColor(colTextboxBackground);
+	cboSlaves->setBaseColor(gui_base_color);
+	cboSlaves->setBackgroundColor(gui_textbox_background_color);
+	cboSlaves->setForegroundColor(gui_foreground_color);
+	cboSlaves->setSelectionColor(gui_selection_color);
+	cboSlaves->addActionListener(whdloadActionListener);
 
 	lblSlaveDataPath = new gcn::Label("Slave Data path:");
 	txtSlaveDataPath = new gcn::TextField();
+	txtSlaveDataPath->setId("txtSlaveDataPath");
 	txtSlaveDataPath->setSize(textfield_width, TEXTFIELD_HEIGHT);
-	txtSlaveDataPath->setBackgroundColor(colTextboxBackground);
+	txtSlaveDataPath->setBaseColor(gui_base_color);
+	txtSlaveDataPath->setBackgroundColor(gui_textbox_background_color);
+	txtSlaveDataPath->setForegroundColor(gui_foreground_color);
 
 	cmdCustomFields = new gcn::Button("Custom Fields");
 	cmdCustomFields->setSize(BUTTON_WIDTH * 2, BUTTON_HEIGHT);
-	cmdCustomFields->setBaseColor(gui_baseCol);
+	cmdCustomFields->setBaseColor(gui_base_color);
+	cmdCustomFields->setForegroundColor(gui_foreground_color);
 	cmdCustomFields->setId("cmdCustomFields");
-	cmdCustomFields->addActionListener(whdloadButtonActionListener);
+	cmdCustomFields->addActionListener(whdloadActionListener);
 
 	lblCustomText = new gcn::Label("Custom:");
 	txtCustomText = new gcn::TextField();
+	txtCustomText->setId("txtCustomText");
 	txtCustomText->setSize(textfield_width, TEXTFIELD_HEIGHT);
-	txtCustomText->setBackgroundColor(colTextboxBackground);
+	txtCustomText->setBaseColor(gui_base_color);
+	txtCustomText->setBackgroundColor(gui_textbox_background_color);
+	txtCustomText->setForegroundColor(gui_foreground_color);
 
 	chkButtonWait = new gcn::CheckBox("Button Wait");
+	chkButtonWait->setId("chkButtonWait");
+	chkButtonWait->setBaseColor(gui_base_color);
+	chkButtonWait->setBackgroundColor(gui_textbox_background_color);
+	chkButtonWait->setForegroundColor(gui_foreground_color);
+	chkButtonWait->addActionListener(whdloadActionListener);
 	chkShowSplash = new gcn::CheckBox("Show Splash");
+	chkShowSplash->setId("chkShowSplash");
+	chkShowSplash->setBaseColor(gui_base_color);
+	chkShowSplash->setBackgroundColor(gui_textbox_background_color);
+	chkShowSplash->setForegroundColor(gui_foreground_color);
+	chkShowSplash->addActionListener(whdloadActionListener);
 
 	lblConfigDelay = new gcn::Label("Config Delay:");
 	txtConfigDelay = new gcn::TextField();
+	txtConfigDelay->setId("txtConfigDelay");
 	txtConfigDelay->setSize(textfield_width, TEXTFIELD_HEIGHT);
-	txtConfigDelay->setBackgroundColor(colTextboxBackground);
+	txtConfigDelay->setBaseColor(gui_base_color);
+	txtConfigDelay->setBackgroundColor(gui_textbox_background_color);
+	txtConfigDelay->setForegroundColor(gui_foreground_color);
 
 	chkWriteCache = new gcn::CheckBox("Write Cache");
+	chkWriteCache->setId("chkWriteCache");
+	chkWriteCache->setBaseColor(gui_base_color);
+	chkWriteCache->setBackgroundColor(gui_textbox_background_color);
+	chkWriteCache->setForegroundColor(gui_foreground_color);
+	chkWriteCache->addActionListener(whdloadActionListener);
 	chkQuitOnExit = new gcn::CheckBox("Quit on Exit");
+	chkQuitOnExit->setId("chkQuitOnExit");
+	chkQuitOnExit->setBaseColor(gui_base_color);
+	chkQuitOnExit->setBackgroundColor(gui_textbox_background_color);
+	chkQuitOnExit->setForegroundColor(gui_foreground_color);
+	chkQuitOnExit->addActionListener(whdloadActionListener);
 
 	constexpr int pos_x1 = DISTANCE_BORDER;
 	const int pos_x2 = chkSlaveLibraries->getWidth() + 8;
@@ -294,7 +368,8 @@ void InitPanelWHDLoad(const struct config_category& category)
 	grpWHDLoadGlobal = new gcn::Window("Global options");
 	grpWHDLoadGlobal->setMovable(false);
 	grpWHDLoadGlobal->setTitleBarHeight(TITLEBAR_HEIGHT);
-	grpWHDLoadGlobal->setBaseColor(gui_baseCol);
+	grpWHDLoadGlobal->setBaseColor(gui_base_color);
+	grpWHDLoadGlobal->setForegroundColor(gui_foreground_color);
 
 	pos_y = 10;
 		grpWHDLoadGlobal->add(chkButtonWait, pos_x1, pos_y);
@@ -364,7 +439,6 @@ void ExitPanelWHDLoad()
 	delete grpWHDLoadGlobal;
 
 	delete whdloadActionListener;
-	delete whdloadButtonActionListener;
 }
 
 void update_slaves_list(const std::vector<whdload_slave>& slaves)
@@ -395,9 +469,9 @@ void RefreshPanelWHDLoad()
 	RefreshWhdListModel();
 	AdjustDropDownControls();
 
-	cmdCustomFields->setEnabled(!whdload_filename.empty());
+	cmdCustomFields->setEnabled(!whdload_prefs.whdload_filename.empty());
 
-	if (whdload_filename.empty())
+	if (whdload_prefs.whdload_filename.empty())
 	{
 		clear_whdload_prefs();
 		slaves_list.clear();
@@ -426,6 +500,17 @@ void RefreshPanelWHDLoad()
 bool HelpPanelWHDLoad(std::vector<std::string>& helptext)
 {
 	helptext.clear();
-	//TODO
+	helptext.emplace_back("WHDLoad auto-config:");
+	helptext.emplace_back("Select a WHDLoad LHA file to auto-configure the emulator for game.");
+	helptext.emplace_back("The game name, UUID, default slave, and other options will be parsed from the XML.");
+	helptext.emplace_back("You can also select a slave from the list.");
+	helptext.emplace_back("The custom fields can be used to add custom options per slave.");
+	helptext.emplace_back("The global options are used for all games.");
+	helptext.emplace_back(" ");
+	helptext.emplace_back("Button Wait: Wait for button press before starting the game.");
+	helptext.emplace_back("Show Splash: Show the WHDLoad splash screen.");
+	helptext.emplace_back("Config Delay: Delay in seconds before starting the game.");
+	helptext.emplace_back("Write Cache: Enable Write cache before starting the game.");
+	helptext.emplace_back("Quit on Exit: Quit Amiberry when the game exits.");
 	return true;
 }
